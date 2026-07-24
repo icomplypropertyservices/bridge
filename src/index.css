@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(139, 92, 246, 0.18), transparent 55%),
+    radial-gradient(900px 500px at 90% 0%, rgba(217, 70, 239, 0.12), transparent 50%),
+    radial-gradient(800px 400px at 50% 100%, rgba(34, 211, 238, 0.08), transparent 45%),
+    #07070c;
+  color: #f4f4f8;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a3d;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer components {
+  .glass-card {
+    @apply rounded-3xl border border-riddle-border bg-riddle-card/90 backdrop-blur-xl shadow-glow;
+  }
+  .field {
+    @apply w-full rounded-2xl border border-riddle-border bg-black/40 px-4 py-3 text-sm outline-none transition
+      focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/20;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500
+      px-5 py-3.5 text-sm font-semibold text-white shadow-glow transition hover:brightness-110
+      disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl border border-riddle-border bg-white/5
+      px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:bg-white/10;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-riddle-border bg-black/30 px-2.5 py-1 text-[11px] text-zinc-300;
+  }
+}
