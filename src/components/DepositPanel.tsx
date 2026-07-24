@@ -2,32 +2,22 @@ import { useEffect, useMemo, useState } from 'react'
 import { Check, Copy, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatAmount, shortAddr } from '../lib/format'
-import {
-  buildDepositDeepLink,
-  openXamanDeepLink,
-  qrDataUrl,
-  type DepositDeepLink,
-} from '../lib/xaman'
+import { buildDepositDeepLink, openXamanDeepLink, qrDataUrl } from '../lib/xaman'
 import type { BridgeCreateResult } from '../types'
 
 interface Props {
   order: BridgeCreateResult
-  /** XRPL source: show deep link + QR of that link */
-  showXamanDeepLink?: boolean
 }
 
-export default function DepositPanel({ order, showXamanDeepLink }: Props) {
+/** XRP-out deposit: always show Xaman payment-request deep link + QR. */
+export default function DepositPanel({ order }: Props) {
   const [copied, setCopied] = useState<string | null>(null)
   const [qr, setQr] = useState('')
 
-  const link: DepositDeepLink = useMemo(() => buildDepositDeepLink(order), [order])
+  const link = useMemo(() => buildDepositDeepLink(order), [order])
   const amount = link.amount
 
   useEffect(() => {
-    if (!showXamanDeepLink) {
-      setQr('')
-      return
-    }
     let cancelled = false
     void qrDataUrl(link.href, 220).then((data) => {
       if (!cancelled) setQr(data)
@@ -35,7 +25,7 @@ export default function DepositPanel({ order, showXamanDeepLink }: Props) {
     return () => {
       cancelled = true
     }
-  }, [link.href, showXamanDeepLink])
+  }, [link.href])
 
   const copy = async (text: string, key: string) => {
     try {
@@ -54,41 +44,31 @@ export default function DepositPanel({ order, showXamanDeepLink }: Props) {
         Deposit to complete
       </div>
       <h3 className="text-lg font-semibold">
-        Send exactly {formatAmount(amount)} {order.fromCurrency.toUpperCase()}
+        Send exactly {formatAmount(amount)} XRP
       </h3>
       <p className="mt-1 text-sm text-riddle-muted">
         Order <span className="font-mono text-zinc-400">{order.id}</span>
       </p>
 
-      {showXamanDeepLink && (
-        <div className="mt-4 space-y-3">
-          <a
-            href={link.href}
-            target="_blank"
-            rel="noreferrer"
-            className="btn-primary flex w-full no-underline"
-            onClick={(e) => {
-              // Prefer native deep link on mobile; keep <a href> as progressive enhancement
-              if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-                e.preventDefault()
-                openXamanDeepLink(link)
-              }
-            }}
-          >
-            <ExternalLink className="h-4 w-4" />
-            Open in Xaman
-          </a>
+      <div className="mt-4 space-y-3">
+        <button
+          type="button"
+          className="btn-primary w-full"
+          onClick={() => openXamanDeepLink(link)}
+        >
+          <ExternalLink className="h-4 w-4" />
+          Open in Xaman
+        </button>
 
-          {qr && (
-            <div className="mx-auto w-fit rounded-2xl border border-riddle-border bg-white p-2.5">
-              <img src={qr} alt="Scan to open Xaman payment" className="h-[200px] w-[200px]" />
-            </div>
-          )}
-          <p className="text-center text-[11px] text-riddle-muted">
-            Deep link / QR opens Xaman with amount & destination tag filled in
-          </p>
-        </div>
-      )}
+        {qr && (
+          <div className="mx-auto w-fit rounded-2xl border border-riddle-border bg-white p-2.5">
+            <img src={qr} alt="Scan to open Xaman payment" className="h-[200px] w-[200px]" />
+          </div>
+        )}
+        <p className="text-center text-[11px] text-riddle-muted">
+          Deep link / QR · amount & destination tag included
+        </p>
+      </div>
 
       <div className="mt-4 space-y-3">
         <CopyField
@@ -129,8 +109,7 @@ export default function DepositPanel({ order, showXamanDeepLink }: Props) {
       </div>
 
       <p className="mt-3 text-[11px] leading-relaxed text-amber-200/80">
-        Prefer the Xaman deep link above. If you send manually, use the exact amount and destination
-        tag.
+        Prefer the Xaman deep link. If you send manually, use the exact amount and destination tag.
       </p>
     </div>
   )

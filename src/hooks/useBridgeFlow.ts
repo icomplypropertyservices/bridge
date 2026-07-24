@@ -1,30 +1,24 @@
 import { useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { createBridge, validateAddress } from '../lib/api'
-import { feeFromBps, netAfterFee } from '../lib/fee'
-import { isXrplNetwork } from '../lib/format'
+import { createSellXrpBridge, validateAddress } from '../lib/api'
+import { splitFee } from '../lib/fee'
 import { buildDepositDeepLink, openXamanDeepLink } from '../lib/xaman'
 import type { BridgeCreateResult, BridgeCurrency } from '../types'
 
 interface Args {
-  from: BridgeCurrency | null
   to: BridgeCurrency | null
   amount: string
   destination: string
-  refundAddress: string
-  walletAddress: string
   feeBps: number
   minAmount: number | null
   onCreated: (result: BridgeCreateResult) => void
 }
 
+/** Sell XRP execute: fee → create → Xaman deposit deep link. */
 export function useBridgeFlow({
-  from,
   to,
   amount,
   destination,
-  refundAddress,
-  walletAddress,
   feeBps,
   minAmount,
   onCreated,
@@ -34,13 +28,14 @@ export function useBridgeFlow({
 
   const run = useCallback(async () => {
     if (lock.current || creating) return
-    if (!from || !to) {
-      toast.error('Select currencies')
+    if (!to) {
+      toast.error('Select a destination asset')
       return
     }
+
     const gross = parseFloat(amount)
     if (!Number.isFinite(gross) || gross <= 0) {
-      toast.error('Enter a valid amount')
+      toast.error('Enter a valid XRP amount')
       return
     }
     if (!destination.trim()) {
@@ -48,12 +43,11 @@ export function useBridgeFlow({
       return
     }
 
-    const bridgeAmount = netAfterFee(gross, feeBps)
-    const feeAmt = feeFromBps(gross, feeBps)
+    const { fee, net } = splitFee(gross, feeBps)
 
-    if (minAmount != null && bridgeAmount < minAmount) {
+    if (minAmount != null && net < minAmount) {
       toast.error(
-        `Minimum after fee is ~${minAmount} ${from.ticker.toUpperCase()} (you send ${gross}, fee ${feeAmt.toFixed(6)})`,
+        `Minimum after cut is ~${minAmount} XRP (you enter ${gross}, cut ${fee.toFixed(6)})`,
       )
       return
     }
@@ -61,50 +55,32 @@ export function useBridgeFlow({
     lock.current = true
     setCreating(true)
     try {
-      const [v, rv] = await Promise.all([
-        validateAddress({
-          currency: to.ticker,
-          address: destination.trim(),
-          network: to.network,
-        }),
-        refundAddress.trim()
-          ? validateAddress({
-              currency: from.ticker,
-              address: refundAddress.trim(),
-              network: from.network,
-            })
-          : Promise.resolve({ result: true as boolean, message: null }),
-      ])
+      const v = await validateAddress({
+        currency: to.ticker,
+        address: destination.trim(),
+        network: to.network,
+      })
       if (v.result === false) {
-        throw new Error(v.message || `Invalid ${to.ticker.toUpperCase()} address`)
-      }
-      if (rv.result === false) {
-        throw new Error(rv.message || 'Invalid refund address')
+        throw new Error(v.message || `Invalid ${to.ticker.toUpperCase()} destination address`)
       }
 
-      const created = await createBridge({
-        fromCurrency: from.ticker,
+      const created = await createSellXrpBridge({
         toCurrency: to.ticker,
-        fromAmount: bridgeAmount,
-        address: destination.trim(),
-        refundAddress: refundAddress.trim() || walletAddress || undefined,
-        fromNetwork: from.network,
         toNetwork: to.network,
+        netXrp: net,
+        address: destination.trim(),
       })
+
+      if (!created.payinAddress) {
+        throw new Error('Bridge created without deposit address')
+      }
 
       onCreated(created)
       toast.success('Bridge order created', {
-        description: `Send ${created.directedAmount ?? bridgeAmount} ${from.ticker.toUpperCase()}`,
+        description: `Pay ${created.directedAmount ?? net} XRP via Xaman (cut ${fee.toFixed(4)} XRP)`,
       })
 
-      // XRPL: open Xaman deep link immediately (user just clicked Bridge)
-      if (isXrplNetwork(from.network, from.ticker) && created.payinAddress) {
-        openXamanDeepLink(buildDepositDeepLink(created))
-      } else {
-        toast.message('Send deposit from your wallet', {
-          description: 'Copy the deposit address and memo/tag if shown',
-        })
-      }
+      openXamanDeepLink(buildDepositDeepLink(created))
     } catch (e) {
       toast.error('Bridge failed', {
         description: e instanceof Error ? e.message : 'Try again',
@@ -113,18 +89,7 @@ export function useBridgeFlow({
       lock.current = false
       setCreating(false)
     }
-  }, [
-    amount,
-    creating,
-    destination,
-    feeBps,
-    from,
-    minAmount,
-    onCreated,
-    refundAddress,
-    to,
-    walletAddress,
-  ])
+  }, [amount, creating, destination, feeBps, minAmount, onCreated, to])
 
   return { creating, run }
 }

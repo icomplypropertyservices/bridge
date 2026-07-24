@@ -15,6 +15,7 @@ export interface BridgeCurrency {
   legacyTicker?: string
 }
 
+/** @deprecated Prefer domain QuoteView + UpstreamEstimate for Sell XRP */
 export interface BridgeEstimate {
   fromCurrency: string
   fromNetwork?: string
@@ -30,11 +31,6 @@ export interface BridgeEstimate {
   withdrawalFee?: number
   fromAmount: number
   toAmount: number
-  /** Riddle-applied fields */
-  platformFeeAmount?: number
-  platformFeeBps?: number
-  bridgeAmount?: number
-  netToAmount?: number
 }
 
 export interface BridgeMinAmount {

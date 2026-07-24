@@ -12,9 +12,20 @@ interface Props {
   options: BridgeCurrency[]
   onChange: (c: BridgeCurrency) => void
   disabled?: boolean
+  /** Optional quick picks (same list used on both sides) */
+  chips?: BridgeCurrency[]
+  totalCount?: number
 }
 
-export default function CurrencySelect({ label, value, options, onChange, disabled }: Props) {
+export default function CurrencySelect({
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+  chips,
+  totalCount,
+}: Props) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
@@ -27,13 +38,9 @@ export default function CurrencySelect({ label, value, options, onChange, disabl
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
 
-  /** Full collector: already sorted in useCurrencies; search re-sorts results. */
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase()
-    if (!query) {
-      // Show full sorted list (no hard 200 cap — virtual-ish via max-height scroll)
-      return options
-    }
+    if (!query) return options
     const hits = options.filter((c) => {
       const hay = `${c.ticker} ${c.name} ${c.network} ${c.legacyTicker || ''}`.toLowerCase()
       return hay.includes(query)
@@ -41,9 +48,43 @@ export default function CurrencySelect({ label, value, options, onChange, disabl
     return sortSearchResults(hits)
   }, [options, q])
 
+  const countLabel = totalCount ?? options.length
+
   return (
     <div className="relative" ref={rootRef}>
-      <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-riddle-muted">{label}</div>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="text-[11px] font-medium uppercase tracking-wider text-riddle-muted">
+          {label}
+        </span>
+        {countLabel > 0 && (
+          <span className="text-[10px] text-zinc-600">{countLabel.toLocaleString()} assets</span>
+        )}
+      </div>
+
+      {chips && chips.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {chips.map((c) => {
+            const active = value && currencyKey(value) === currencyKey(c)
+            return (
+              <button
+                key={currencyKey(c)}
+                type="button"
+                disabled={disabled}
+                onClick={() => onChange(c)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition ${
+                  active
+                    ? 'border-violet-500/50 bg-violet-500/15 text-violet-200'
+                    : 'border-riddle-border bg-black/30 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                }`}
+              >
+                <TokenLogo ticker={c.ticker} image={c.image} size={16} />
+                {c.ticker.toUpperCase()}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <button
         type="button"
         disabled={disabled}
@@ -52,9 +93,11 @@ export default function CurrencySelect({ label, value, options, onChange, disabl
       >
         <TokenLogo ticker={value?.ticker} image={value?.image} size={32} />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-semibold">{value ? value.ticker.toUpperCase() : 'Select'}</div>
+          <div className="truncate font-semibold">
+            {value ? value.ticker.toUpperCase() : 'Select'}
+          </div>
           <div className="truncate text-[11px] text-riddle-muted">
-            {value ? `${value.name} · ${networkLabel(value.network)}` : 'Choose asset & network'}
+            {value ? `${value.name} · ${networkLabel(value.network)}` : 'Any asset · any network'}
           </div>
         </div>
         <ChevronDown className={`h-4 w-4 text-zinc-500 transition ${open ? 'rotate-180' : ''}`} />
@@ -68,7 +111,7 @@ export default function CurrencySelect({ label, value, options, onChange, disabl
               autoFocus
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search ticker, name, network…"
+              placeholder={`Search ${countLabel.toLocaleString()}+ currencies…`}
               className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-zinc-600"
             />
           </div>

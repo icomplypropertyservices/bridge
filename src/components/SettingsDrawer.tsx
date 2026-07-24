@@ -24,10 +24,10 @@ export default function SettingsDrawer({ open, onClose, feePercent }: Props) {
 
         <div className="space-y-5 text-sm">
           <div className="rounded-2xl border border-riddle-border bg-black/30 p-4">
-            <div className="text-xs uppercase tracking-wider text-riddle-muted">Platform fee</div>
+            <div className="text-xs uppercase tracking-wider text-riddle-muted">Platform cut</div>
             <div className="mt-1 text-2xl font-semibold text-violet-300">{feePercent}%</div>
             <p className="mt-1 text-[11px] text-riddle-muted">
-              Applied on every bridge. Shown before you confirm.
+              Reduces deposit size (net XRP bridged). Not a separate fee-wallet payment.
             </p>
           </div>
 

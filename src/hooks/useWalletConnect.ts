@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { createXamanPayload, pollXamanPayload } from '../lib/api'
-import { isMobileUa } from '../lib/xaman'
+import { openXamanUrls, signInUrls } from '../lib/xaman'
 import { shortAddr } from '../lib/format'
 import type { ConnectStatus, XummPayloadResponse } from '../types'
 
@@ -116,22 +116,8 @@ export function useWalletConnect() {
       setPayload(data)
       setModalOpen(true)
 
-      const web = data.next?.always || `https://xumm.app/sign/${data.uuid}`
-      const native = `xumm://xumm.app/sign/${data.uuid}`
-
       // Mobile: open Xaman app immediately (user just tapped Connect)
-      if (isMobileUa()) {
-        try {
-          window.location.href = native
-          setTimeout(() => {
-            if (document.visibilityState === 'visible') {
-              window.location.href = web
-            }
-          }, 700)
-        } catch {
-          /* QR still available in modal */
-        }
-      }
+      openXamanUrls(signInUrls(data.uuid, data.next?.always))
 
       startPoll(data.uuid)
     } catch (e) {
@@ -143,16 +129,7 @@ export function useWalletConnect() {
 
   const openDeepLink = useCallback(() => {
     if (!payload) return
-    const web = payload.next?.always || `https://xumm.app/sign/${payload.uuid}`
-    const native = `xumm://xumm.app/sign/${payload.uuid}`
-    if (isMobileUa()) {
-      window.location.href = native
-      setTimeout(() => {
-        if (document.visibilityState === 'visible') window.open(web, '_blank', 'noopener,noreferrer')
-      }, 600)
-    } else {
-      window.open(web, '_blank', 'noopener,noreferrer')
-    }
+    openXamanUrls(signInUrls(payload.uuid, payload.next?.always))
   }, [payload])
 
   const disconnect = useCallback(() => {

@@ -12,5 +12,8 @@ dist-ssr
 .vercel
 bridge-flow-*.png
 bridge-flow-*.json
+connect-wallet-*.png
+connect-wallet-*.json
 playwright-report
 test-results
+tmp-bridge-js

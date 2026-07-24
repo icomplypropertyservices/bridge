@@ -3,17 +3,9 @@ import react from '@vitejs/plugin-react'
 import path from 'node:path'
 import fs from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-
-const UPSTREAM = 'https://api.xrpl.to/v1'
-const XUMM_API = 'https://xumm.app/api/v1/platform/payload'
-
-/** Hide partner brand in error text only — never rewrite image CDN hosts. */
-function sanitizeError(msg: string): string {
-  return msg
-    .replace(/https?:\/\/api\.xrpl\.to/gi, 'bridge-api')
-    .replace(/\bxrpl\.to\b/gi, 'bridge')
-    // do NOT replace "changenow" — logo CDN is content-api.changenow.io
-}
+// Shared handlers (JS) — one implementation for Vite + Vercel
+// @ts-expect-error resolved at runtime by Node ESM
+import { buildConfigJson, proxyBridge, proxyXaman } from './server/handlers.mjs'
 
 function readDotEnvFile(filePath: string): Record<string, string> {
   const out: Record<string, string> = {}
@@ -59,189 +51,103 @@ function resolveServerEnv(mode: string, cwd: string): Record<string, string> {
   }
 }
 
-async function readBody(req: IncomingMessage): Promise<Buffer> {
+async function readBody(req: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = []
   for await (const chunk of req) {
     chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
   }
-  return Buffer.concat(chunks)
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+function send(
+  res: ServerResponse,
+  out: { status: number; body: string; contentType: string; cacheControl?: string },
+) {
+  res.statusCode = out.status
+  res.setHeader('Content-Type', out.contentType)
+  if (out.cacheControl) res.setHeader('Cache-Control', out.cacheControl)
+  res.end(out.body)
 }
 
 function attachBridgeMiddleware(
   server: ViteDevServer | PreviewServer,
   env: Record<string, string>,
 ) {
-  const apiKey = (env.XRPL_TO_API_KEY || '').trim()
-  const feeBps = Number(env.PLATFORM_FEE_BPS || '85')
-  const xummKey = (env.XUMM_API_KEY || '').trim()
-  const xummSecret = (env.XUMM_API_SECRET || '').trim()
-  const xamanReady = Boolean(xummKey && xummSecret)
+  const cfg = buildConfigJson(env)
+  if (!cfg.bridgeReady) console.warn('[riddle-bridge] XRPL_TO_API_KEY empty')
+  else console.info('[riddle-bridge] Bridge API ready')
+  if (!cfg.xamanReady) console.warn('[riddle-bridge] Xaman keys missing')
+  else console.info('[riddle-bridge] Xaman ready')
 
-  const getCache = new Map<string, { body: string; status: number; expires: number }>()
-  const CACHE_MS: Record<string, number> = {
-    '/bridge/currencies': 10 * 60 * 1000,
-    '/bridge/min-amount': 60 * 1000,
-  }
+  const getCache = new Map<string, { out: { status: number; body: string; contentType: string; cacheControl?: string }; expires: number }>()
 
-  if (!apiKey) {
-    console.warn('[riddle-bridge] XRPL_TO_API_KEY is empty — bridge routes will fail auth')
-  } else {
-    console.info(`[riddle-bridge] Bridge API key loaded (…${apiKey.slice(-4)})`)
-  }
-  if (xamanReady) {
-    console.info(`[riddle-bridge] Xaman credentials loaded (…${xummKey.slice(-4)})`)
-  } else {
-    console.warn('[riddle-bridge] XUMM_API_KEY/SECRET missing — Connect Wallet will fail')
-  }
-
-  server.middlewares.use('/api/config', (_req: IncomingMessage, res: ServerResponse) => {
+  server.middlewares.use('/api/config', (_req, res) => {
     res.setHeader('Content-Type', 'application/json')
-    res.end(
-      JSON.stringify({
-        platformFeeBps: Number.isFinite(feeBps) ? feeBps : 85,
-        platformFeePercent: ((Number.isFinite(feeBps) ? feeBps : 85) / 100).toFixed(2),
-        brand: 'Riddle Bridge',
-        bridgeReady: Boolean(apiKey),
-        xamanReady,
-      }),
-    )
+    res.setHeader('Cache-Control', 'no-store')
+    res.end(JSON.stringify(cfg))
   })
 
-  // Server-only Xaman Platform API (Sign-In + poll). Keys never sent to the browser.
-  server.middlewares.use('/api/xaman/payload', async (req: IncomingMessage, res: ServerResponse) => {
+  server.middlewares.use('/api/xaman/payload', async (req, res) => {
     try {
-      if (!xamanReady) {
-        res.statusCode = 503
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify({ error: 'Xaman not configured on server' }))
-        return
-      }
-
-      const headers: Record<string, string> = {
-        Accept: 'application/json',
-        'X-API-Key': xummKey,
-        'X-API-Secret': xummSecret,
-      }
-
-      if (req.method === 'POST') {
-        const raw = await readBody(req)
-        headers['Content-Type'] = 'application/json'
-        const upstream = await fetch(XUMM_API, {
-          method: 'POST',
-          headers,
-          body: raw.toString('utf8'),
-        })
-        const text = await upstream.text()
-        res.statusCode = upstream.status
-        res.setHeader('Content-Type', 'application/json')
-        res.end(text)
-        return
-      }
-
-      if (req.method === 'GET') {
-        const url = new URL(req.url || '', 'http://local')
-        const uuid = url.searchParams.get('uuid')
-        if (!uuid) {
-          res.statusCode = 400
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ error: 'uuid required' }))
-          return
-        }
-        const upstream = await fetch(`${XUMM_API}/${encodeURIComponent(uuid)}`, { headers })
-        const text = await upstream.text()
-        res.statusCode = upstream.status
-        res.setHeader('Content-Type', 'application/json')
-        res.end(text)
-        return
-      }
-
-      res.statusCode = 405
-      res.end('Method not allowed')
+      const url = new URL(req.url || '', 'http://local')
+      const body =
+        req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : undefined
+      const out = await proxyXaman(
+        {
+          method: req.method || 'GET',
+          uuid: url.searchParams.get('uuid') || undefined,
+          body,
+        },
+        env,
+      )
+      send(res, out)
     } catch (e) {
       res.statusCode = 502
       res.setHeader('Content-Type', 'application/json')
-      res.end(
-        JSON.stringify({
-          error: sanitizeError(e instanceof Error ? e.message : 'Xaman proxy error'),
-        }),
-      )
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : 'proxy error' }))
     }
   })
 
-  // Bridge proxy + deposit deep links stay client-side payment-request.
-  server.middlewares.use(async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+  server.middlewares.use(async (req, res, next) => {
     const rawUrl = req.url || ''
     if (!rawUrl.startsWith('/v1/bridge')) return next()
 
     try {
-      if (!apiKey) {
-        res.statusCode = 500
-        res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify({ error: 'Bridge API key not configured on server' }))
-        return
-      }
-
-      const pathOnly = rawUrl.split('?')[0].replace(/^\/v1/, '')
-      const cacheTtl = req.method === 'GET' ? CACHE_MS[pathOnly] : 0
-      if (cacheTtl) {
-        const hit = getCache.get(rawUrl)
+      const url = new URL(rawUrl, 'http://local')
+      const cacheKey = rawUrl
+      if (req.method === 'GET') {
+        const hit = getCache.get(cacheKey)
         if (hit && hit.expires > Date.now()) {
-          res.statusCode = hit.status
-          res.setHeader('Content-Type', 'application/json')
-          res.setHeader('Cache-Control', 'public, max-age=60')
           res.setHeader('X-Cache', 'HIT')
-          res.end(hit.body)
+          send(res, hit.out)
           return
         }
       }
 
-      const target = `${UPSTREAM}${rawUrl.replace(/^\/v1/, '')}`
-      const headers: Record<string, string> = {
-        Accept: 'application/json',
-        'User-Agent': 'RiddleBridge/1.0',
-        'X-Api-Key': apiKey,
+      const body =
+        req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH'
+          ? await readBody(req)
+          : undefined
+
+      const out = await proxyBridge(
+        {
+          method: req.method || 'GET',
+          path: url.pathname.replace(/^\/v1/, ''),
+          query: url.searchParams,
+          body,
+        },
+        env,
+      )
+
+      if (req.method === 'GET' && out.status < 400 && url.pathname.includes('currencies')) {
+        getCache.set(cacheKey, { out, expires: Date.now() + 10 * 60 * 1000 })
       }
 
-      let body: Buffer | undefined
-      if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
-        body = await readBody(req)
-        headers['Content-Type'] = String(req.headers['content-type'] || 'application/json')
-      }
-
-      const upstream = await fetch(target, {
-        method: req.method || 'GET',
-        headers,
-        body: body && body.length ? body : undefined,
-      })
-
-      let text = await upstream.text()
-      // Logo hosts: upstream sometimes returns dead content-api.bridge.io — fix to real CDN
-      if (upstream.ok) {
-        text = text.replace(/content-api\.bridge\.io/g, 'content-api.changenow.io')
-      } else {
-        text = sanitizeError(text)
-      }
-
-      if (cacheTtl && upstream.ok) {
-        getCache.set(rawUrl, {
-          body: text,
-          status: upstream.status,
-          expires: Date.now() + cacheTtl,
-        })
-      }
-
-      res.statusCode = upstream.status
-      res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
-      res.setHeader('Cache-Control', cacheTtl ? 'public, max-age=60' : 'no-store')
-      res.end(text)
+      send(res, out)
     } catch (e) {
       res.statusCode = 502
       res.setHeader('Content-Type', 'application/json')
-      res.end(
-        JSON.stringify({
-          error: sanitizeError(e instanceof Error ? e.message : 'Bridge proxy error'),
-        }),
-      )
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : 'proxy error' }))
     }
   })
 }
@@ -263,16 +169,9 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), bridgeApiPlugin(env)],
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, 'src'),
-      },
+      alias: { '@': path.resolve(__dirname, 'src') },
     },
-    server: {
-      port: 5177,
-      host: true,
-    },
-    preview: {
-      port: 5177,
-    },
+    server: { port: 5177, host: true },
+    preview: { port: 5177 },
   }
 })

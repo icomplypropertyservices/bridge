@@ -2,13 +2,14 @@ import type {
   AppConfig,
   BridgeCreateResult,
   BridgeCurrency,
-  BridgeEstimate,
   BridgeMinAmount,
   BridgeStatus,
   ValidateAddressResult,
   XummPayloadResponse,
   XummPayloadStatus,
 } from '../types'
+import type { UpstreamEstimate } from '../domain/xrpOut'
+import { SOURCE_NETWORK, SOURCE_TICKER } from '../domain/xrpOut'
 import { DEFAULT_FEE_BPS } from './fee'
 
 const BRIDGE = '/v1/bridge'
@@ -44,7 +45,6 @@ export async function fetchConfig(): Promise<AppConfig> {
   }
 }
 
-/** Create Sign-In (or other) payload via server — keys stay on server. */
 export async function createXamanPayload(
   body: Record<string, unknown>,
 ): Promise<XummPayloadResponse> {
@@ -68,37 +68,33 @@ export async function fetchCurrencies(): Promise<BridgeCurrency[]> {
   return data.currencies || []
 }
 
-export async function fetchEstimate(params: {
-  fromCurrency: string
+/** XRP-out estimate — wire only (net XRP amount). */
+export async function fetchSellXrpEstimate(params: {
   toCurrency: string
-  fromAmount: string | number
-  fromNetwork?: string
-  toNetwork?: string
-}): Promise<BridgeEstimate> {
+  toNetwork: string
+  netXrp: number | string
+}): Promise<UpstreamEstimate> {
   const qs = new URLSearchParams({
-    fromCurrency: params.fromCurrency,
+    fromCurrency: SOURCE_TICKER,
     toCurrency: params.toCurrency,
-    fromAmount: String(params.fromAmount),
+    fromAmount: String(params.netXrp),
+    fromNetwork: SOURCE_NETWORK,
+    toNetwork: params.toNetwork,
   })
-  if (params.fromNetwork) qs.set('fromNetwork', params.fromNetwork)
-  if (params.toNetwork) qs.set('toNetwork', params.toNetwork)
-
   const res = await fetch(`${BRIDGE}/estimate?${qs}`)
-  return parseJson<BridgeEstimate>(res)
+  return parseJson<UpstreamEstimate>(res)
 }
 
-export async function fetchMinAmount(params: {
-  fromCurrency: string
+export async function fetchSellXrpMinAmount(params: {
   toCurrency: string
-  fromNetwork?: string
-  toNetwork?: string
+  toNetwork: string
 }): Promise<BridgeMinAmount> {
   const qs = new URLSearchParams({
-    fromCurrency: params.fromCurrency,
+    fromCurrency: SOURCE_TICKER,
     toCurrency: params.toCurrency,
+    fromNetwork: SOURCE_NETWORK,
+    toNetwork: params.toNetwork,
   })
-  if (params.fromNetwork) qs.set('fromNetwork', params.fromNetwork)
-  if (params.toNetwork) qs.set('toNetwork', params.toNetwork)
   const res = await fetch(`${BRIDGE}/min-amount?${qs}`)
   return parseJson<BridgeMinAmount>(res)
 }
@@ -117,29 +113,23 @@ export async function validateAddress(params: {
   return parseJson<ValidateAddressResult>(res)
 }
 
-export async function createBridge(body: {
-  fromCurrency: string
+export async function createSellXrpBridge(body: {
   toCurrency: string
-  fromAmount: number | string
+  toNetwork: string
+  netXrp: number | string
   address: string
-  refundAddress?: string
-  fromNetwork?: string
-  toNetwork?: string
 }): Promise<BridgeCreateResult> {
-  const payload: Record<string, unknown> = {
-    fromCurrency: body.fromCurrency,
-    toCurrency: body.toCurrency,
-    fromAmount: body.fromAmount,
-    address: body.address,
-  }
-  if (body.refundAddress) payload.refundAddress = body.refundAddress
-  if (body.fromNetwork) payload.fromNetwork = body.fromNetwork
-  if (body.toNetwork) payload.toNetwork = body.toNetwork
-
   const res = await fetch(`${BRIDGE}/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      fromCurrency: SOURCE_TICKER,
+      toCurrency: body.toCurrency,
+      fromAmount: body.netXrp,
+      address: body.address,
+      fromNetwork: SOURCE_NETWORK,
+      toNetwork: body.toNetwork,
+    }),
   })
   return parseJson<BridgeCreateResult>(res)
 }

@@ -1,45 +1,23 @@
 /**
- * Xaman = Payment Request deep links only.
- * QR is just that deep link as an image — not a second system.
- * @see https://docs.xaman.dev/simple-link-qr/payment-request-link
+ * Xaman helpers:
+ * - Connect: Platform Sign-In (server proxy) — see useWalletConnect
+ * - Deposit execute: payment-request deep link (no Platform payload)
  */
 import QRCode from 'qrcode'
 import type { BridgeCreateResult } from '../types'
+import { depositAmount } from '../domain/xrpOut'
 
-export interface PaymentRequestParams {
-  address: string
-  amount: number | string
-  destinationTag?: string | number | null
-  network?: 'XRPL' | 'XAHAU'
+export interface XamanOpenUrls {
+  web: string
+  native: string
 }
 
-export interface DepositDeepLink {
-  /** https://xaman.app/detect/request:… — primary deep link */
+export interface DepositDeepLink extends XamanOpenUrls {
   href: string
-  /** xumm://… — native app scheme */
   nativeHref: string
   amount: number | string
   address: string
   destinationTag?: string | null
-}
-
-export function buildDepositDeepLink(order: BridgeCreateResult): DepositDeepLink {
-  const address = order.payinAddress.trim()
-  const amount = order.directedAmount ?? order.fromAmount
-  const tag =
-    order.payinExtraId != null && String(order.payinExtraId).trim() !== ''
-      ? String(order.payinExtraId).trim()
-      : null
-
-  const qs = new URLSearchParams()
-  if (amount != null && Number(amount) > 0) qs.set('amount', String(amount))
-  qs.set('network', 'XRPL')
-  if (tag) qs.set('dt', tag)
-
-  const href = `https://xaman.app/detect/request:${address}?${qs.toString()}`
-  const nativeHref = href.replace('https://xaman.app/', 'xumm://xumm.app/')
-
-  return { href, nativeHref, amount, address, destinationTag: tag }
 }
 
 export function isMobileUa(): boolean {
@@ -47,24 +25,58 @@ export function isMobileUa(): boolean {
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 }
 
-/** Fire the deep link (native scheme on mobile, web deep link otherwise). */
-export function openXamanDeepLink(link: DepositDeepLink): void {
+/** Unified open helper for payment-request or Sign-In next.always URLs. */
+export function openXamanUrls(urls: XamanOpenUrls): void {
   try {
     if (isMobileUa()) {
-      window.location.href = link.nativeHref
-      // Fallback if app not installed / scheme ignored
+      window.location.href = urls.native
       setTimeout(() => {
         if (document.visibilityState === 'visible') {
-          window.location.href = link.href
+          window.location.href = urls.web
         }
       }, 700)
     } else {
-      // Desktop: open Xaman web/detect flow (user-invoked preferred)
-      window.open(link.href, '_blank', 'noopener,noreferrer')
+      window.open(urls.web, '_blank', 'noopener,noreferrer')
     }
   } catch {
-    window.open(link.href, '_blank', 'noopener,noreferrer')
+    window.open(urls.web, '_blank', 'noopener,noreferrer')
   }
+}
+
+export function buildDepositDeepLink(order: BridgeCreateResult): DepositDeepLink {
+  const address = order.payinAddress.trim()
+  const amount = depositAmount(order)
+  const tag =
+    order.payinExtraId != null && String(order.payinExtraId).trim() !== ''
+      ? String(order.payinExtraId).trim()
+      : null
+
+  const qs = new URLSearchParams()
+  if (amount > 0) qs.set('amount', String(amount))
+  qs.set('network', 'XRPL')
+  if (tag) qs.set('dt', tag)
+
+  const href = `https://xaman.app/detect/request:${address}?${qs.toString()}`
+  const nativeHref = href.replace('https://xaman.app/', 'xumm://xumm.app/')
+  return {
+    href,
+    nativeHref,
+    web: href,
+    native: nativeHref,
+    amount,
+    address,
+    destinationTag: tag,
+  }
+}
+
+export function openXamanDeepLink(link: DepositDeepLink): void {
+  openXamanUrls({ web: link.web, native: link.native })
+}
+
+export function signInUrls(uuid: string, nextAlways?: string): XamanOpenUrls {
+  const web = nextAlways || `https://xumm.app/sign/${uuid}`
+  const native = `xumm://xumm.app/sign/${uuid}`
+  return { web, native }
 }
 
 export async function qrDataUrl(href: string, size = 240): Promise<string> {
