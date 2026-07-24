@@ -25,16 +25,29 @@ export function isMobileUa(): boolean {
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 }
 
-/** Unified open helper for payment-request or Sign-In next.always URLs. */
+/**
+ * Open Xaman without always unloading the SPA.
+ * Mobile: try custom-scheme via hidden anchor (keeps tab + poll alive).
+ * Fallback to web universal link only if the page is still foreground after a beat.
+ * Desktop: open universal link in a new tab (QR still shown in-app).
+ */
 export function openXamanUrls(urls: XamanOpenUrls): void {
   try {
     if (isMobileUa()) {
-      window.location.href = urls.native
-      setTimeout(() => {
+      // Prefer not using location.href — that kills React state + poll on many browsers.
+      const a = document.createElement('a')
+      a.href = urls.native
+      a.style.display = 'none'
+      a.rel = 'noopener'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      // If the app did not take over, fall back to universal link (may leave page).
+      window.setTimeout(() => {
         if (document.visibilityState === 'visible') {
           window.location.href = urls.web
         }
-      }, 700)
+      }, 900)
     } else {
       window.open(urls.web, '_blank', 'noopener,noreferrer')
     }
