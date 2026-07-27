@@ -1,4 +1,4 @@
-import { chromium } from 'playwright'
+﻿import { chromium } from 'playwright'
 import { writeFileSync } from 'node:fs'
 
 const result = {
@@ -27,10 +27,10 @@ page.on('response', async (res) => {
 })
 
 try {
-  await page.goto('http://localhost:5177/', { waitUntil: 'domcontentloaded', timeout: 45000 })
+  await page.goto('http://localhost:5180/', { waitUntil: 'domcontentloaded', timeout: 45000 })
   result.steps.push('loaded app')
 
-  // Wait until currencies loaded — both selectors resolve off "Select"
+  // Wait until currencies loaded â€” both selectors resolve off "Select"
   await page.waitForFunction(
     () => {
       const t = document.body.innerText
@@ -91,7 +91,7 @@ try {
       result.steps.push(`popup: ${popup.url()}`)
       await popup.close().catch(() => {})
     }
-    // "Open in Xaman" is a button that calls openXamanDeepLink — the link is
+    // "Open in Xaman" is a button that calls openXamanDeepLink â€” the link is
     // rebuilt from the order, so assert against the order rather than an href.
     const xamanBtn = await page.locator('button:has-text("Open in Xaman")').count()
     result.steps.push(xamanBtn ? 'Xaman button present' : 'Xaman button missing')

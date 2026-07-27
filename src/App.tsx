@@ -6,6 +6,7 @@ import DepositPanel from './components/DepositPanel'
 import StatusPanel from './components/StatusPanel'
 import SettingsDrawer from './components/SettingsDrawer'
 import JoeyConnectModal from './components/JoeyConnectModal'
+import XamanConnectModal from './components/XamanConnectModal'
 import { useCurrencies } from './hooks/useCurrencies'
 import { useEstimate } from './hooks/useEstimate'
 import { useBridgeStatus } from './hooks/useBridgeStatus'
@@ -42,7 +43,7 @@ export default function App() {
   const [order, setOrder] = useState<BridgeCreateResult | null>(null)
 
   const wallet = useWallet()
-  const { pay, canPay } = usePayDeposit(wallet.addresses)
+  const { pay, canPay } = usePayDeposit(wallet.addresses, { xrplCanSign: wallet.xrplCanSign })
 
   const { quote, minAmount, loading: estimateLoading, error: estimateError } = useEstimate(
     from,
@@ -122,7 +123,12 @@ export default function App() {
   return (
     <div className="min-h-svh">
       <Toaster theme="dark" position="top-center" richColors closeButton />
-      <Header wallet={wallet} onOpenSettings={() => setSettingsOpen(true)} feePercent={feePercent} />
+      <Header
+        wallet={wallet}
+        xamanAvailable={config?.xamanReady !== false}
+        onOpenSettings={() => setSettingsOpen(true)}
+        feePercent={feePercent}
+      />
 
       {!walletConnectConfigured && (
         <div className="mx-auto mb-4 w-full max-w-5xl px-4">
@@ -206,6 +212,14 @@ export default function App() {
         connecting={wallet.xrplConnecting}
         joeyHref={wallet.joeyHref}
         onClose={wallet.closeJoeyModal}
+      />
+
+      <XamanConnectModal
+        open={wallet.xaman.modalOpen}
+        payload={wallet.xaman.payload}
+        status={wallet.xaman.status}
+        onClose={wallet.xaman.closeModal}
+        onOpenDeepLink={wallet.xaman.openDeepLink}
       />
 
       <SettingsDrawer

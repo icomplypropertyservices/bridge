@@ -1,22 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, LogOut, Plus, Wallet } from 'lucide-react'
 import { shortAddr } from '../lib/format'
-import { familyLabel, type WalletFamily } from '../lib/wallet/networks'
-import type { WalletApi } from '../hooks/useWallet'
+import { WALLET_KINDS, type WalletApi, type WalletKind } from '../hooks/useWallet'
 
-const FAMILIES: WalletFamily[] = ['eip155', 'solana', 'xrpl']
+const KIND_LABEL: Record<WalletKind, string> = {
+  eip155: 'Ethereum / EVM',
+  solana: 'Solana',
+  joey: 'Joey Wallet',
+  xaman: 'Xaman',
+}
 
-const FAMILY_HINT: Record<WalletFamily, string> = {
+const KIND_HINT: Record<WalletKind, string> = {
   eip155: 'MetaMask, Rainbow, Trust · WalletConnect',
   solana: 'Phantom, Solflare · WalletConnect',
-  xrpl: 'Joey Wallet · WalletConnect',
+  joey: 'XRP Ledger · WalletConnect',
+  xaman: 'XRP Ledger · Sign-In + deep link',
 }
 
 interface Props {
   wallet: WalletApi
+  /** Hidden when the server has no Xaman credentials */
+  xamanAvailable: boolean
 }
 
-export default function WalletMenu({ wallet }: Props) {
+export default function WalletMenu({ wallet, xamanAvailable }: Props) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -36,8 +43,9 @@ export default function WalletMenu({ wallet }: Props) {
     }
   }, [open])
 
-  const { addresses, connectedFamilies, anyConnected } = wallet
-  const primary = connectedFamilies[0]
+  const { kindAddresses, connectedKinds, anyConnected } = wallet
+  const primary = connectedKinds[0]
+  const kinds = WALLET_KINDS.filter((k) => k !== 'xaman' || xamanAvailable)
 
   return (
     <div className="relative" ref={ref}>
@@ -49,9 +57,9 @@ export default function WalletMenu({ wallet }: Props) {
         <Wallet className={`h-4 w-4 ${anyConnected ? 'text-emerald-400' : ''}`} />
         {anyConnected && primary ? (
           <span className="font-mono text-xs">
-            {shortAddr(addresses[primary])}
-            {connectedFamilies.length > 1 && (
-              <span className="ml-1 text-riddle-muted">+{connectedFamilies.length - 1}</span>
+            {shortAddr(kindAddresses[primary])}
+            {connectedKinds.length > 1 && (
+              <span className="ml-1 text-riddle-muted">+{connectedKinds.length - 1}</span>
             )}
           </span>
         ) : (
@@ -61,23 +69,22 @@ export default function WalletMenu({ wallet }: Props) {
       </button>
 
       {open && (
-        <div className="absolute right-0 z-[90] mt-2 w-[19rem] rounded-2xl border border-riddle-border bg-[#0b0b12] p-2 shadow-2xl">
-          {FAMILIES.map((family) => {
-            const addr = addresses[family]
-            const isConnecting = family === 'xrpl' && wallet.xrplConnecting
+        <div className="absolute right-0 z-[90] mt-2 w-[20rem] rounded-2xl border border-riddle-border bg-[#0b0b12] p-2 shadow-2xl">
+          {kinds.map((kind) => {
+            const addr = kindAddresses[kind]
+            const busy =
+              (kind === 'joey' && wallet.xrplConnecting) ||
+              (kind === 'xaman' && wallet.xaman.connecting)
             return (
-              <div
-                key={family}
-                className="flex items-center gap-2 rounded-xl p-2 hover:bg-white/5"
-              >
+              <div key={kind} className="flex items-center gap-2 rounded-xl p-2 hover:bg-white/5">
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium">{familyLabel(family)}</div>
+                  <div className="text-sm font-medium">{KIND_LABEL[kind]}</div>
                   {addr ? (
                     <div className="font-mono text-[11px] text-emerald-400">
                       {shortAddr(addr, 10, 6)}
                     </div>
                   ) : (
-                    <div className="text-[11px] text-riddle-muted">{FAMILY_HINT[family]}</div>
+                    <div className="text-[11px] text-riddle-muted">{KIND_HINT[kind]}</div>
                   )}
                 </div>
 
@@ -85,8 +92,8 @@ export default function WalletMenu({ wallet }: Props) {
                   <button
                     type="button"
                     className="btn-ghost !px-2.5 !py-1.5"
-                    title={`Disconnect ${familyLabel(family)}`}
-                    onClick={() => void wallet.disconnectFamily(family)}
+                    title={`Disconnect ${KIND_LABEL[kind]}`}
+                    onClick={() => void wallet.disconnectKind(kind)}
                   >
                     <LogOut className="h-3.5 w-3.5" />
                   </button>
@@ -94,14 +101,14 @@ export default function WalletMenu({ wallet }: Props) {
                   <button
                     type="button"
                     className="btn-ghost !px-2.5 !py-1.5"
-                    disabled={isConnecting}
+                    disabled={busy}
                     onClick={() => {
-                      wallet.connectFamily(family)
+                      wallet.connectKind(kind)
                       setOpen(false)
                     }}
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    <span className="text-xs">{isConnecting ? '…' : 'Connect'}</span>
+                    <span className="text-xs">{busy ? '…' : 'Connect'}</span>
                   </button>
                 )}
               </div>

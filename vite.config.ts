@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 // Shared handlers (JS) — one implementation for Vite + Vercel
 // @ts-expect-error resolved at runtime by Node ESM
-import { buildConfigJson, proxyBridge } from './server/handlers.mjs'
+import { buildConfigJson, proxyBridge, proxyXaman } from './server/handlers.mjs'
 
 function readDotEnvFile(filePath: string): Record<string, string> {
   const out: Record<string, string> = {}
@@ -45,6 +45,9 @@ function resolveServerEnv(mode: string, cwd: string): Record<string, string> {
       process.env.XRPL_TO_API_KEY || fromVite.XRPL_TO_API_KEY || fromFile.XRPL_TO_API_KEY || '',
     PLATFORM_FEE_BPS:
       process.env.PLATFORM_FEE_BPS || fromVite.PLATFORM_FEE_BPS || fromFile.PLATFORM_FEE_BPS || '85',
+    XUMM_API_KEY: process.env.XUMM_API_KEY || fromVite.XUMM_API_KEY || fromFile.XUMM_API_KEY || '',
+    XUMM_API_SECRET:
+      process.env.XUMM_API_SECRET || fromVite.XUMM_API_SECRET || fromFile.XUMM_API_SECRET || '',
   }
 }
 
@@ -71,8 +74,10 @@ function attachBridgeMiddleware(
   env: Record<string, string>,
 ) {
   const cfg = buildConfigJson(env)
-  if (!cfg.bridgeReady) console.warn('[riddle-bridge] XRPL_TO_API_KEY empty')
-  else console.info('[riddle-bridge] Bridge API ready')
+  if (!cfg.bridgeKeyed) console.warn('[riddle-bridge] XRPL_TO_API_KEY empty — running unauthenticated at a low rate limit')
+  else console.info('[riddle-bridge] Bridge API key present')
+  if (!cfg.xamanReady) console.warn('[riddle-bridge] Xaman keys missing — Sign-In hidden')
+  else console.info('[riddle-bridge] Xaman Sign-In ready')
 
   const getCache = new Map<string, { out: { status: number; body: string; contentType: string; cacheControl?: string }; expires: number }>()
 
@@ -80,6 +85,26 @@ function attachBridgeMiddleware(
     res.setHeader('Content-Type', 'application/json')
     res.setHeader('Cache-Control', 'no-store')
     res.end(JSON.stringify(cfg))
+  })
+
+  server.middlewares.use('/api/xaman/payload', async (req, res) => {
+    try {
+      const url = new URL(req.url || '', 'http://local')
+      const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : undefined
+      const out = await proxyXaman(
+        {
+          method: req.method || 'GET',
+          uuid: url.searchParams.get('uuid') || undefined,
+          body,
+        },
+        env,
+      )
+      send(res, out)
+    } catch (e) {
+      res.statusCode = 502
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : 'proxy error' }))
+    }
   })
 
   server.middlewares.use(async (req, res, next) => {

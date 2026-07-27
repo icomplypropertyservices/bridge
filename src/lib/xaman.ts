@@ -80,3 +80,11 @@ export function openXamanDeepLink(link: DepositDeepLink): void {
   openXamanUrls({ web: link.web, native: link.native })
 }
 
+/** Sign-In payload links. Xaman is absent from the WalletConnect registry, so
+ *  connecting it uses the Platform payload rather than a wc: pairing. */
+export function signInUrls(uuid: string, nextAlways?: string): XamanOpenUrls {
+  const web = nextAlways || `https://xumm.app/sign/${uuid}`
+  const native = `xumm://xumm.app/sign/${uuid}`
+  return { web, native }
+}
+

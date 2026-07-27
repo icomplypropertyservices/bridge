@@ -45,6 +45,19 @@ export const appMetadata = {
   icons: [`${origin}/logo.jpg`],
 }
 
+/** CAIP id for Solana mainnet-beta. */
+export const SOLANA_CAIP_ID = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'
+
+/**
+ * Explicit Solana RPC. The adapter's default endpoint answers
+ * `getLatestBlockhash` with 403 on some networks, which breaks every send, so
+ * point it at Reown's Blockchain API (authorised by our project id) unless an
+ * override is supplied.
+ */
+export const solanaRpcUrl =
+  String(import.meta.env.VITE_SOLANA_RPC_URL || '').trim() ||
+  `https://rpc.walletconnect.org/v1/?chainId=${SOLANA_CAIP_ID}&projectId=${projectId}`
+
 export const wagmiAdapter = new WagmiAdapter({
   networks: APPKIT_NETWORKS,
   projectId,
@@ -57,6 +70,7 @@ export const appKit = createAppKit({
   networks: APPKIT_NETWORKS,
   projectId,
   metadata: appMetadata,
+  customRpcUrls: { [SOLANA_CAIP_ID]: [{ url: solanaRpcUrl }] },
   themeMode: 'dark',
   themeVariables: {
     '--w3m-accent': '#8b5cf6',

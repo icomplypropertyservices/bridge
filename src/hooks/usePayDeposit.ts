@@ -5,10 +5,11 @@
  * the Xaman deep link stays available as the no-connection fallback (handled
  * in the deposit UI, not here).
  */
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useAppKitProvider } from '@reown/appkit/react'
-import { useAppKitConnection } from '@reown/appkit-adapter-solana/react'
 import type { Provider as SolanaProvider } from '@reown/appkit-utils/solana'
+import { Connection } from '@solana/web3.js'
+import { solanaRpcUrl } from '../lib/wallet/appkit'
 import { depositAmount, depositTag } from '../domain/bridge'
 import { evmChainIdFor, walletFamilyFor } from '../lib/wallet/networks'
 import { payEvm } from '../lib/pay/evm'
@@ -23,18 +24,30 @@ export interface PayResult {
   network: string
 }
 
-export function usePayDeposit(addresses: WalletAddresses) {
+interface Options {
+  /** False when the XRPL address came from Xaman, which has no signing session. */
+  xrplCanSign: boolean
+}
+
+export function usePayDeposit(addresses: WalletAddresses, { xrplCanSign }: Options) {
   const { walletProvider: solanaProvider } = useAppKitProvider<SolanaProvider>('solana')
-  const { connection } = useAppKitConnection()
+
+  /**
+   * Our own Connection on a verified endpoint rather than the adapter's
+   * default, which has been seen to answer getLatestBlockhash with 403 and so
+   * fail every send.
+   */
+  const connection = useMemo(() => new Connection(solanaRpcUrl, 'confirmed'), [])
 
   const canPay = useCallback(
     (from: BridgeCurrency | null): boolean => {
       const family = walletFamilyFor(from?.network)
       if (!family) return false
-      if (family === 'solana') return Boolean(addresses.solana && solanaProvider && connection)
+      if (family === 'solana') return Boolean(addresses.solana && solanaProvider)
+      if (family === 'xrpl') return Boolean(addresses.xrpl && xrplCanSign)
       return Boolean(addresses[family])
     },
-    [addresses, connection, solanaProvider],
+    [addresses, solanaProvider, xrplCanSign],
   )
 
   const pay = useCallback(
@@ -64,7 +77,7 @@ export function usePayDeposit(addresses: WalletAddresses) {
 
       if (family === 'solana') {
         if (!addresses.solana) throw new Error('Connect a Solana wallet first')
-        if (!solanaProvider || !connection) throw new Error('Solana provider is not ready')
+        if (!solanaProvider) throw new Error('Solana provider is not ready')
         const txId = await paySolana({
           provider: solanaProvider,
           connection,
@@ -77,7 +90,9 @@ export function usePayDeposit(addresses: WalletAddresses) {
         return { txId, network: from.network }
       }
 
-      if (!addresses.xrpl) throw new Error('Connect Joey Wallet first')
+      if (!addresses.xrpl || !xrplCanSign) {
+        throw new Error('Connect Joey Wallet to sign — Xaman pays via its deep link')
+      }
       const { hash } = await payXrpl({
         from: addresses.xrpl,
         destination: to,
@@ -87,7 +102,7 @@ export function usePayDeposit(addresses: WalletAddresses) {
       if (!hash) throw new Error('Wallet signed the payment but returned no transaction hash')
       return { txId: hash, network: from.network }
     },
-    [addresses, connection, solanaProvider],
+    [addresses, connection, solanaProvider, xrplCanSign],
   )
 
   return { pay, canPay }

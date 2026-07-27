@@ -4,11 +4,12 @@ import type { WalletApi } from '../hooks/useWallet'
 
 interface Props {
   wallet: WalletApi
+  xamanAvailable: boolean
   onOpenSettings: () => void
   feePercent: string
 }
 
-export default function Header({ wallet, onOpenSettings, feePercent }: Props) {
+export default function Header({ wallet, xamanAvailable, onOpenSettings, feePercent }: Props) {
   return (
     <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-5">
       <div className="flex items-center gap-3">
@@ -34,7 +35,7 @@ export default function Header({ wallet, onOpenSettings, feePercent }: Props) {
         >
           <Settings className="h-4 w-4" />
         </button>
-        <WalletMenu wallet={wallet} />
+        <WalletMenu wallet={wallet} xamanAvailable={xamanAvailable} />
       </div>
     </header>
   )

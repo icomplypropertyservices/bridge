@@ -5,6 +5,8 @@ import type {
   BridgeMinAmount,
   BridgeStatus,
   ValidateAddressResult,
+  XummPayloadResponse,
+  XummPayloadStatus,
 } from '../types'
 import type { UpstreamEstimate } from '../domain/bridge'
 import { DEFAULT_FEE_BPS } from './fee'
@@ -37,8 +39,26 @@ export async function fetchConfig(): Promise<AppConfig> {
       platformFeePercent: (DEFAULT_FEE_BPS / 100).toFixed(2),
       brand: 'Riddle Bridge',
       bridgeReady: false,
+      xamanReady: false,
     }
   }
+}
+
+/** Xaman Sign-In payload — Xaman has no WalletConnect v2, so this stays server-signed. */
+export async function createXamanPayload(
+  body: Record<string, unknown>,
+): Promise<XummPayloadResponse> {
+  const res = await fetch('/api/xaman/payload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return parseJson<XummPayloadResponse>(res)
+}
+
+export async function pollXamanPayload(uuid: string): Promise<XummPayloadStatus> {
+  const res = await fetch(`/api/xaman/payload?uuid=${encodeURIComponent(uuid)}`)
+  return parseJson<XummPayloadStatus>(res)
 }
 
 export async function fetchCurrencies(): Promise<BridgeCurrency[]> {

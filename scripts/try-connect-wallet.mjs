@@ -92,16 +92,16 @@ try {
   const menuText = await page.locator('body').innerText()
   const hasEvm = /Ethereum \/ EVM/i.test(menuText)
   const hasSol = /Solana/i.test(menuText)
-  const hasXrpl = /XRP Ledger/i.test(menuText)
-  step(`menu: evm=${hasEvm} solana=${hasSol} xrpl=${hasXrpl}`)
-  if (!hasEvm || !hasSol || !hasXrpl) result.errors.push('wallet menu missing a stack')
+  const hasJoey = /Joey Wallet/i.test(menuText)
+  const hasXaman = /Xaman/i.test(menuText)
+  step(`menu: evm=${hasEvm} solana=${hasSol} joey=${hasJoey} xaman=${hasXaman}`)
+  result.menu = { evm: hasEvm, solana: hasSol, joey: hasJoey, xaman: hasXaman }
+  if (!hasEvm || !hasSol || !hasJoey) result.errors.push('wallet menu missing a stack')
+  if (!hasXaman) result.errors.push('Xaman option missing from wallet menu')
 
   // --- 2. XRPL / Joey pairing ----------------------------------------------
-  await page
-    .getByRole('button', { name: /^Connect$/ })
-    .last()
-    .click()
-  step('clicked XRPL connect')
+  await page.getByRole('button', { name: /^Connect$/ }).nth(2).click()
+  step('clicked Joey connect')
 
   const joeyQr = await page
     .locator('img[alt="Scan with Joey Wallet"]')
@@ -164,6 +164,26 @@ try {
   if (!solUri) result.errors.push('AppKit produced no wc: URI for Solana')
 
   await page.screenshot({ path: 'wc-solana.png', fullPage: true })
+
+  // --- 5. Xaman Sign-In (server payload, not WalletConnect) ----------------
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.waitForTimeout(2500)
+  await openWalletMenu()
+  await page.getByRole('button', { name: /^Connect$/ }).nth(3).click()
+  step('clicked Xaman connect')
+
+  const xamanQr = await page
+    .locator('img[alt="Scan with Xaman"]')
+    .first()
+    .waitFor({ timeout: 30000 })
+    .then(() => true)
+    .catch(() => false)
+  const xamanModal = await page.locator('text=Connect Xaman').count()
+  result.xaman = { modal: xamanModal > 0, qr: xamanQr }
+  step(`xaman modal=${xamanModal > 0} qr=${xamanQr}`)
+  if (!xamanQr) result.errors.push('Xaman Sign-In produced no QR')
+
+  await page.screenshot({ path: 'wc-xaman.png', fullPage: true })
 } catch (e) {
   result.errors.push(e.message)
   await page.screenshot({ path: 'wc-error.png', fullPage: true }).catch(() => {})
