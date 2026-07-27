@@ -26,7 +26,7 @@ export default function JoeyConnectModal({ uri, connecting, joeyHref, onClose }:
       return
     }
     let cancelled = false
-    void qrDataUrl(uri, 240).then((data) => {
+    void qrDataUrl(uri, 280).then((data) => {
       if (!cancelled) setQr(data)
     })
     return () => {
@@ -58,7 +58,8 @@ export default function JoeyConnectModal({ uri, connecting, joeyHref, onClose }:
           <div>
             <h3 className="text-xl font-semibold">Connect XRPL wallet</h3>
             <p className="mt-1 text-sm text-riddle-muted">
-              Scan with Joey Wallet, or open it directly on mobile
+              Scan from <strong className="text-zinc-300">inside Joey Wallet</strong> — use its
+              WalletConnect scanner, not your camera app
             </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-xl p-2 hover:bg-white/5">
@@ -68,13 +69,19 @@ export default function JoeyConnectModal({ uri, connecting, joeyHref, onClose }:
 
         {qr ? (
           <div className="mx-auto mt-6 w-fit rounded-2xl border border-riddle-border bg-white p-3">
-            <img src={qr} alt="Scan with Joey Wallet" className="h-[240px] w-[240px]" />
+            <img src={qr} alt="Scan with Joey Wallet" className="h-[280px] w-[280px]" />
           </div>
         ) : (
-          <div className="mt-6 flex h-[240px] items-center justify-center">
+          <div className="mt-6 flex h-[280px] items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
           </div>
         )}
+
+        <p className="mt-3 text-center text-[11px] text-amber-200/80">
+          A phone camera will only show text — this encodes a WalletConnect
+          <code className="mx-1 text-amber-100">wc:</code>
+          session, which only a wallet can open.
+        </p>
 
         {uri && (
           <div className="mt-4 grid gap-2">

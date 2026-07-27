@@ -13,19 +13,16 @@ import { APPKIT_NETWORKS } from './networks'
 const LOCALHOST_PROJECT_ID = 'b56e18d47c72ab683b10814fe9495694'
 
 const envProjectId = String(import.meta.env.VITE_REOWN_PROJECT_ID || '').trim()
-const envWcProjectId = String(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '').trim()
 
 /** False when the deploy has no real project id — surfaced in the connect UI. */
 export const walletConnectConfigured = envProjectId.length > 0
 
-/** AppKit (EVM + Solana). */
-export const projectId = envProjectId || LOCALHOST_PROJECT_ID
-
 /**
- * XRPL runs on its own WalletConnect client, so it can carry its own project
- * id. Falls back to the AppKit id when only one is configured.
+ * One Reown project id for everything: AppKit (EVM + Solana), the XRPL
+ * WalletConnect client, the wallet-registry lookup and the Solana RPC. Reown
+ * *is* WalletConnect, so a second id only adds a way for the two to drift.
  */
-export const wcProjectId = envWcProjectId || projectId
+export const projectId = envProjectId || LOCALHOST_PROJECT_ID
 
 if (!walletConnectConfigured && typeof window !== 'undefined') {
   console.warn(

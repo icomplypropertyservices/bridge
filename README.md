@@ -23,8 +23,8 @@ Open http://localhost:5177
 | Variable | Required | Where | Description |
 |----------|----------|-------|-------------|
 | `XRPL_TO_API_KEY` | yes | server | Bridge execution API key |
-| `VITE_REOWN_PROJECT_ID` | yes | client | Reown project id for AppKit (EVM + Solana) — [dashboard.reown.com](https://dashboard.reown.com) |
-| `VITE_WALLETCONNECT_PROJECT_ID` | optional | client | Project id for the XRPL client; defaults to `VITE_REOWN_PROJECT_ID` |
+| `VITE_REOWN_PROJECT_ID` | yes | client | Reown project id — drives every WalletConnect surface. [dashboard.reown.com](https://dashboard.reown.com) |
+| `VITE_SOLANA_RPC_URL` | optional | client | Solana RPC override; defaults to Reown's Blockchain API |
 | `PLATFORM_FEE_BPS` | optional | server | Fee in basis points (default `85` = 0.85%) |
 
 Without `VITE_REOWN_PROJECT_ID` the app falls back to Reown's public localhost

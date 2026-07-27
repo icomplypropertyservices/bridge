@@ -89,11 +89,15 @@ try {
 
   // --- 1. wallet menu lists all three stacks -------------------------------
   await openWalletMenu()
+  // Count the menu's Connect rows rather than page text — "Xaman" also appears
+  // in the how-it-works copy, which made a body-text match a false positive.
+  const rows = await page.getByRole('button', { name: /^Connect$/ }).count()
   const menuText = await page.locator('body').innerText()
   const hasEvm = /Ethereum \/ EVM/i.test(menuText)
-  const hasSol = /Solana/i.test(menuText)
+  const hasSol = /Phantom, Solflare/i.test(menuText)
   const hasJoey = /Joey Wallet/i.test(menuText)
-  const hasXaman = /Xaman/i.test(menuText)
+  const hasXaman = /Sign-In \+ deep link/i.test(menuText)
+  step(`connect rows=${rows}`)
   step(`menu: evm=${hasEvm} solana=${hasSol} joey=${hasJoey} xaman=${hasXaman}`)
   result.menu = { evm: hasEvm, solana: hasSol, joey: hasJoey, xaman: hasXaman }
   if (!hasEvm || !hasSol || !hasJoey) result.errors.push('wallet menu missing a stack')

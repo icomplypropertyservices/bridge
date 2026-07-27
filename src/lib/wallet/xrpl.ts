@@ -19,7 +19,7 @@ import {
   XRPL_NAMESPACE,
   addressFromCaip,
 } from './networks'
-import { appMetadata, wcProjectId } from './appkit'
+import { appMetadata, projectId } from './appkit'
 
 const STORAGE_PREFIX = 'riddle-xrpl'
 
@@ -43,7 +43,7 @@ let providerPromise: Promise<Provider> | null = null
 export function getXrplProvider(): Promise<Provider> {
   if (!providerPromise) {
     providerPromise = UniversalProvider.init({
-      projectId: wcProjectId,
+      projectId,
       metadata: appMetadata,
       customStoragePrefix: STORAGE_PREFIX,
     }).catch((e) => {
@@ -70,36 +70,101 @@ export async function restoreXrplSession(): Promise<string> {
   }
 }
 
+/** How long to wait for the relay to hand back a pairing URI. */
+const URI_TIMEOUT_MS = 15000
+
 /**
  * Open a WalletConnect session on `xrpl:0`.
  * `onUri` receives the pairing URI so the caller can render a QR / deep link.
  */
 export async function connectXrpl(onUri?: (uri: string) => void): Promise<string> {
-  const provider = await getXrplProvider()
+  const provider = await Promise.race([
+    getXrplProvider(),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () =>
+          reject(
+            new Error(
+              'WalletConnect relay did not respond. Check that this domain is allowlisted on the Reown project.',
+            ),
+          ),
+        URI_TIMEOUT_MS,
+      ),
+    ),
+  ])
 
   const existing = xrplAccountFrom(provider.session)
   if (existing) return existing
 
-  const handleUri = (uri: string) => onUri?.(uri)
+  let sawUri = false
+  const handleUri = (uri: string) => {
+    sawUri = true
+    onUri?.(uri)
+  }
   provider.on('display_uri', handleUri)
 
+  // Without this the modal sits on "waiting for approval" forever when the
+  // relay never issues a URI — a silent hang the user cannot act on.
+  const uriWatchdog = setTimeout(() => {
+    if (!sawUri) {
+      provider.events.emit(
+        'connect_error',
+        new Error('No pairing URI issued — the relay rejected or dropped the request'),
+      )
+    }
+  }, URI_TIMEOUT_MS)
+
   try {
-    const session = await provider.connect({
-      optionalNamespaces: {
-        [XRPL_NAMESPACE]: {
-          chains: [XRPL_CAIP_NETWORK_ID],
-          methods: XRPL_METHODS,
-          events: XRPL_EVENTS,
+    const session = await Promise.race([
+      provider.connect({
+        optionalNamespaces: {
+          [XRPL_NAMESPACE]: {
+            chains: [XRPL_CAIP_NETWORK_ID],
+            methods: XRPL_METHODS,
+            events: XRPL_EVENTS,
+          },
         },
-      },
-    })
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          if (!sawUri) {
+            reject(
+              new Error(
+                'No QR could be generated — the WalletConnect relay issued no pairing URI. ' +
+                  'This usually means this domain is not allowlisted on the Reown project.',
+              ),
+            )
+          }
+        }, URI_TIMEOUT_MS),
+      ),
+    ])
 
     const account = xrplAccountFrom(session)
     if (!account) throw new Error('Wallet approved the session but returned no XRPL account')
     return account
   } finally {
+    clearTimeout(uriWatchdog)
     provider.removeListener('display_uri', handleUri)
   }
+}
+
+/**
+ * Drop the local WalletConnect store for the XRPL client.
+ * A half-written pairing from an interrupted attempt makes every later connect
+ * fail; clearing it is the reliable way back to a clean pairing.
+ */
+export function resetXrplStorage(): void {
+  try {
+    const doomed: string[] = []
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith(STORAGE_PREFIX)) doomed.push(key)
+    }
+    doomed.forEach((k) => localStorage.removeItem(k))
+  } catch {
+    /* private mode — nothing cached to clear */
+  }
+  providerPromise = null
 }
 
 export async function disconnectXrpl(): Promise<void> {

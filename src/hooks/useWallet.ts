@@ -17,6 +17,7 @@ import {
   connectXrpl,
   disconnectXrpl,
   getXrplProvider,
+  resetXrplStorage,
   restoreXrplSession,
   xrplAccountFrom,
 } from '../lib/wallet/xrpl'
@@ -164,8 +165,13 @@ export function useWallet() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Try again'
       // A user closing the wallet sheet surfaces as a rejection — not an error worth shouting about.
-      if (/reject|cancel|closed|denied/i.test(msg)) toast.info('Connection cancelled')
-      else toast.error('Joey Wallet connect failed', { description: msg })
+      if (/reject|cancel|closed|denied/i.test(msg)) {
+        toast.info('Connection cancelled')
+      } else {
+        // A failed pairing can leave half-written WC state that breaks retries.
+        resetXrplStorage()
+        toast.error('Joey Wallet connect failed', { description: msg, duration: 10000 })
+      }
     } finally {
       pairingRef.current = false
       setXrplConnecting(false)
