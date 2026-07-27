@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchCurrencies } from '../lib/api'
 import { FEATURED_ORDER, sortTokenCollector } from '../lib/tokens'
+import { SOURCE_NETWORK, SOURCE_TICKER } from '../domain/bridge'
 import type { BridgeCurrency } from '../types'
 import { currencyKey } from '../types'
 
 /**
- * Markets for **XRP out** only (Sell XRP → any asset).
- * From is always XRPL XRP; receive list is all non-XRP cryptos.
+ * Markets for both sides of the bridge. XRP remains the default source, but any
+ * listed asset can be sent — a connected wallet signs it where the network is
+ * supported, otherwise the user sends manually to the deposit address.
  */
 export function useCurrencies() {
   const [all, setAll] = useState<BridgeCurrency[]>([])
@@ -34,42 +36,36 @@ export function useCurrencies() {
     }
   }, [])
 
-  /** Fixed source: XRP on XRPL */
   const xrp = useMemo(
-    () => all.find((c) => c.ticker.toLowerCase() === 'xrp' && c.network === 'xrp') ?? null,
+    () =>
+      all.find((c) => c.ticker.toLowerCase() === SOURCE_TICKER && c.network === SOURCE_NETWORK) ??
+      null,
     [all],
   )
 
-  /** Destination markets: every crypto except native XRP (keep multi-network tokens). */
-  const receiveOptions = useMemo(
-    () =>
-      sortTokenCollector(
-        all.filter((c) => !(c.ticker.toLowerCase() === 'xrp' && c.network === 'xrp')),
-      ),
-    [all],
-  )
+  /** Both selectors draw from the same market list. */
+  const options = useMemo(() => sortTokenCollector(all), [all])
 
   const featuredChips = useMemo(() => {
     const out: BridgeCurrency[] = []
     for (const t of FEATURED_ORDER) {
-      if (t === 'xrp') continue
       const hit =
-        receiveOptions.find((c) => c.ticker.toLowerCase() === t && c.network === t) ||
-        receiveOptions.find((c) => c.ticker.toLowerCase() === t)
+        options.find((c) => c.ticker.toLowerCase() === t && c.network === t) ||
+        options.find((c) => c.ticker.toLowerCase() === t)
       if (hit) out.push(hit)
     }
     return out
-  }, [receiveOptions])
+  }, [options])
 
   const defaults = useMemo(() => {
-    const btc = receiveOptions.find((c) => c.ticker === 'btc' && c.network === 'btc')
-    const eth = receiveOptions.find((c) => c.ticker === 'eth' && c.network === 'eth')
-    const usdt = receiveOptions.find((c) => c.ticker === 'usdt' && c.network === 'eth')
+    const btc = options.find((c) => c.ticker === 'btc' && c.network === 'btc')
+    const eth = options.find((c) => c.ticker === 'eth' && c.network === 'eth')
+    const usdt = options.find((c) => c.ticker === 'usdt' && c.network === 'eth')
     return {
-      from: xrp,
+      from: xrp ?? eth ?? options[0] ?? null,
       to: btc || eth || usdt || featuredChips[0] || null,
     }
-  }, [xrp, receiveOptions, featuredChips])
+  }, [xrp, options, featuredChips])
 
   const byKey = useMemo(() => {
     const map = new Map<string, BridgeCurrency>()
@@ -78,15 +74,14 @@ export function useCurrencies() {
   }, [all])
 
   return {
-    /** Full crypto list (for counts / debug) */
     currencies: all,
     xrp,
-    receiveOptions,
+    options,
     featuredChips,
     byKey,
     defaults,
     loading,
     error,
-    count: receiveOptions.length,
+    count: options.length,
   }
 }

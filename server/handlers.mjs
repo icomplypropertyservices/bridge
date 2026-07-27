@@ -1,10 +1,13 @@
-/**
+﻿/**
  * Shared HTTP handlers for Vite middleware and Vercel serverless.
- * Single source of truth for bridge proxy + Xaman Sign-In.
+ * Single source of truth for the bridge proxy.
+ *
+ * Wallet connection is entirely client-side over WalletConnect, so no wallet
+ * credentials live on the server. Xaman is used only as a payment-request deep
+ * link, which needs no API key.
  */
 
 export const UPSTREAM = 'https://api.xrpl.to/v1'
-export const XUMM_API = 'https://xumm.app/api/v1/platform/payload'
 
 export function sanitizeError(msg) {
   return String(msg)
@@ -19,15 +22,12 @@ export function rewriteLogoHosts(text) {
 export function buildConfigJson(env) {
   const feeBps = Number(env.PLATFORM_FEE_BPS || '85')
   const apiKey = String(env.XRPL_TO_API_KEY || '').trim()
-  const xummKey = String(env.XUMM_API_KEY || '').trim()
-  const xummSecret = String(env.XUMM_API_SECRET || '').trim()
   const bps = Number.isFinite(feeBps) ? feeBps : 85
   return {
     platformFeeBps: bps,
     platformFeePercent: (bps / 100).toFixed(2),
     brand: 'Riddle Bridge',
     bridgeReady: Boolean(apiKey),
-    xamanReady: Boolean(xummKey && xummSecret),
   }
 }
 
@@ -86,74 +86,6 @@ export async function proxyBridge(req, env) {
       status: 502,
       body: JSON.stringify({
         error: sanitizeError(e instanceof Error ? e.message : 'Bridge proxy error'),
-      }),
-      contentType: 'application/json',
-    }
-  }
-}
-
-/**
- * @param {{ method: string, uuid?: string, body?: string }} req
- * @param {Record<string, string>} env
- */
-export async function proxyXaman(req, env) {
-  const xummKey = String(env.XUMM_API_KEY || '').trim()
-  const xummSecret = String(env.XUMM_API_SECRET || '').trim()
-  if (!xummKey || !xummSecret) {
-    return {
-      status: 503,
-      body: JSON.stringify({ error: 'Xaman not configured on server' }),
-      contentType: 'application/json',
-    }
-  }
-
-  const headers = {
-    Accept: 'application/json',
-    'X-API-Key': xummKey,
-    'X-API-Secret': xummSecret,
-  }
-
-  try {
-    if (req.method === 'POST') {
-      headers['Content-Type'] = 'application/json'
-      const upstream = await fetch(XUMM_API, {
-        method: 'POST',
-        headers,
-        body: req.body || '{}',
-      })
-      return {
-        status: upstream.status,
-        body: await upstream.text(),
-        contentType: 'application/json',
-      }
-    }
-
-    if (req.method === 'GET') {
-      if (!req.uuid) {
-        return {
-          status: 400,
-          body: JSON.stringify({ error: 'uuid required' }),
-          contentType: 'application/json',
-        }
-      }
-      const upstream = await fetch(`${XUMM_API}/${encodeURIComponent(req.uuid)}`, { headers })
-      return {
-        status: upstream.status,
-        body: await upstream.text(),
-        contentType: 'application/json',
-      }
-    }
-
-    return {
-      status: 405,
-      body: JSON.stringify({ error: 'Method not allowed' }),
-      contentType: 'application/json',
-    }
-  } catch (e) {
-    return {
-      status: 502,
-      body: JSON.stringify({
-        error: sanitizeError(e instanceof Error ? e.message : 'Xaman proxy error'),
       }),
       contentType: 'application/json',
     }

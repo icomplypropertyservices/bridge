@@ -1,18 +1,21 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Toaster } from 'sonner'
 import Header from './components/Header'
 import BridgeForm from './components/BridgeForm'
 import DepositPanel from './components/DepositPanel'
 import StatusPanel from './components/StatusPanel'
 import SettingsDrawer from './components/SettingsDrawer'
-import ConnectModal from './components/ConnectModal'
+import JoeyConnectModal from './components/JoeyConnectModal'
 import { useCurrencies } from './hooks/useCurrencies'
 import { useEstimate } from './hooks/useEstimate'
 import { useBridgeStatus } from './hooks/useBridgeStatus'
 import { useBridgeFlow } from './hooks/useBridgeFlow'
-import { useWalletConnect } from './hooks/useWalletConnect'
+import { useWallet } from './hooks/useWallet'
+import { usePayDeposit } from './hooks/usePayDeposit'
 import { fetchConfig } from './lib/api'
 import { DEFAULT_FEE_BPS } from './lib/fee'
+import { walletConnectConfigured } from './lib/wallet/appkit'
+import { walletFamilyFor } from './lib/wallet/networks'
 import type { AppConfig, BridgeCreateResult, BridgeCurrency } from './types'
 
 export default function App() {
@@ -23,28 +26,34 @@ export default function App() {
   const feePercent = config?.platformFeePercent ?? (feeBps / 100).toFixed(2)
 
   const {
-    receiveOptions,
+    options,
     featuredChips,
-    xrp,
     defaults,
     loading: currenciesLoading,
     error: currenciesError,
     count: currencyCount,
   } = useCurrencies()
 
+  const [from, setFrom] = useState<BridgeCurrency | null>(null)
   const [to, setTo] = useState<BridgeCurrency | null>(null)
   const [amount, setAmount] = useState('50')
   const [destination, setDestination] = useState('')
   const [bridgeId, setBridgeId] = useState<string | null>(null)
   const [order, setOrder] = useState<BridgeCreateResult | null>(null)
 
-  const wallet = useWalletConnect()
+  const wallet = useWallet()
+  const { pay, canPay } = usePayDeposit(wallet.addresses)
+
   const { quote, minAmount, loading: estimateLoading, error: estimateError } = useEstimate(
+    from,
     to,
     amount,
     feeBps,
   )
   const { status, polling } = useBridgeStatus(bridgeId)
+
+  const sourceWallet = wallet.addressForNetwork(from?.network)
+  const destinationWallet = wallet.addressForNetwork(to?.network)
 
   const onCreated = useCallback((result: BridgeCreateResult) => {
     setOrder(result)
@@ -52,12 +61,16 @@ export default function App() {
   }, [])
 
   const flow = useBridgeFlow({
+    from,
     to,
     amount,
     destination,
     feeBps,
     minAmount,
+    refundAddress: sourceWallet,
     onCreated,
+    pay,
+    canPay,
   })
 
   useEffect(() => {
@@ -65,20 +78,69 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (!from && defaults.from) setFrom(defaults.from)
     if (!to && defaults.to) setTo(defaults.to)
-  }, [defaults.to, to])
+  }, [defaults.from, defaults.to, from, to])
+
+  const swap = useCallback(() => {
+    setFrom(to)
+    setTo(from)
+    setDestination('')
+  }, [from, to])
+
+  const connectSource = useCallback(() => {
+    const family = walletFamilyFor(from?.network)
+    if (family) wallet.connectFamily(family)
+  }, [from?.network, wallet])
+
+  const howItWorks = useMemo(
+    () => (
+      <div className="glass-card p-5 text-sm text-riddle-muted leading-relaxed">
+        <div className="mb-2 font-semibold text-zinc-200">How it works</div>
+        <ol className="list-decimal space-y-2 pl-4">
+          <li>
+            Pick what you send and receive (
+            {currencyCount > 0 ? currencyCount.toLocaleString() : '1,200+'} assets).
+          </li>
+          <li>
+            <strong className="text-zinc-300">Connect Wallet</strong> — WalletConnect covers
+            Ethereum/EVM, Solana and XRPL (Joey Wallet).
+          </li>
+          <li>Platform cut {feePercent}% reduces the deposit. Estimate + create use the net amount.</li>
+          <li>Destination auto-fills from a connected wallet on the receive network.</li>
+          <li>
+            Confirm → the order is created and your wallet signs the deposit. XRP can also pay via{' '}
+            <strong className="text-zinc-300">Xaman</strong>.
+          </li>
+          <li>Track status until funds arrive.</li>
+        </ol>
+      </div>
+    ),
+    [currencyCount, feePercent],
+  )
 
   return (
     <div className="min-h-svh">
       <Toaster theme="dark" position="top-center" richColors closeButton />
-      <Header
-        address={wallet.address}
-        connecting={wallet.connecting}
-        onConnect={() => void wallet.connect()}
-        onDisconnect={wallet.disconnect}
-        onOpenSettings={() => setSettingsOpen(true)}
-        feePercent={feePercent}
-      />
+      <Header wallet={wallet} onOpenSettings={() => setSettingsOpen(true)} feePercent={feePercent} />
+
+      {!walletConnectConfigured && (
+        <div className="mx-auto mb-4 w-full max-w-5xl px-4">
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-950/30 px-4 py-3 text-[12px] text-amber-200">
+            <strong>WalletConnect is unconfigured.</strong> Set{' '}
+            <code className="text-amber-100">VITE_REOWN_PROJECT_ID</code> from{' '}
+            <a
+              className="underline"
+              href="https://dashboard.reown.com"
+              target="_blank"
+              rel="noreferrer"
+            >
+              dashboard.reown.com
+            </a>
+            . Connections work on localhost only until then.
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto grid w-full max-w-5xl gap-6 px-4 pb-16 lg:grid-cols-[1.15fr_0.85fr]">
         <div>
@@ -87,19 +149,23 @@ export default function App() {
               {currenciesError}
             </div>
           )}
-          {currenciesLoading && !xrp ? (
+          {currenciesLoading && options.length === 0 ? (
             <div className="glass-card p-10 text-center text-riddle-muted">Loading markets…</div>
           ) : (
             <BridgeForm
-              receiveOptions={receiveOptions}
+              options={options}
               featuredChips={featuredChips}
-              xrpImage={xrp?.image}
+              from={from}
+              onFrom={setFrom}
               to={to}
               onTo={setTo}
+              onSwap={swap}
               amount={amount}
               onAmount={setAmount}
               destination={destination}
               onDestination={setDestination}
+              destinationWallet={destinationWallet}
+              sourceWallet={sourceWallet}
               quote={quote}
               minAmount={minAmount}
               estimateLoading={estimateLoading}
@@ -107,53 +173,39 @@ export default function App() {
               feeBps={feeBps}
               feePercent={feePercent}
               creating={flow.creating}
+              paying={flow.paying}
               onSubmit={() => void flow.run()}
+              onConnectSource={connectSource}
             />
           )}
         </div>
 
         <div className="space-y-4">
-          {order && <DepositPanel order={order} />}
-          <StatusPanel status={status} polling={polling} bridgeId={bridgeId} />
-
-          {!order && (
-            <div className="glass-card p-5 text-sm text-riddle-muted leading-relaxed">
-              <div className="mb-2 font-semibold text-zinc-200">How it works · XRP out</div>
-              <ol className="list-decimal space-y-2 pl-4">
-                <li>
-                  Choose what you receive (
-                  {currencyCount > 0 ? currencyCount.toLocaleString() : '1,200+'} assets). You
-                  always send <strong className="text-zinc-300">XRP</strong>.
-                </li>
-                <li>
-                  Platform cut {feePercent}% reduces the deposit. Estimate + create use net XRP.
-                </li>
-                <li>
-                  <strong className="text-zinc-300">Connect Wallet</strong> with Xaman (more
-                  wallets later).
-                </li>
-                <li>Paste destination on the receive network.</li>
-                <li>
-                  Confirm → create order + <strong className="text-zinc-300">Xaman opens</strong> to
-                  pay the deposit.
-                </li>
-                <li>Track status until funds arrive.</li>
-              </ol>
-            </div>
+          {order && (
+            <DepositPanel
+              order={order}
+              from={from}
+              sourceWallet={sourceWallet}
+              paying={flow.paying}
+              onPay={() => {
+                if (from) void flow.payOrder(order, from)
+              }}
+            />
           )}
+          <StatusPanel status={status} polling={polling} bridgeId={bridgeId} />
+          {!order && howItWorks}
         </div>
       </main>
 
       <footer className="mx-auto max-w-5xl px-4 pb-10 text-center text-[11px] text-zinc-600">
-        Riddle Bridge · XRP out only · Not financial advice
+        Riddle Bridge · Not financial advice
       </footer>
 
-      <ConnectModal
-        open={wallet.modalOpen}
-        payload={wallet.payload}
-        status={wallet.status}
-        onClose={wallet.closeModal}
-        onOpenDeepLink={wallet.openDeepLink}
+      <JoeyConnectModal
+        uri={wallet.xrplUri}
+        connecting={wallet.xrplConnecting}
+        joeyHref={wallet.joeyHref}
+        onClose={wallet.closeJoeyModal}
       />
 
       <SettingsDrawer

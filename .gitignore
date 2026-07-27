@@ -14,6 +14,8 @@ bridge-flow-*.png
 bridge-flow-*.json
 connect-wallet-*.png
 connect-wallet-*.json
+wc-*.png
+wc-result.json
 playwright-report
 test-results
 tmp-bridge-js

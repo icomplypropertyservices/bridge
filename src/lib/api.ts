@@ -5,11 +5,8 @@ import type {
   BridgeMinAmount,
   BridgeStatus,
   ValidateAddressResult,
-  XummPayloadResponse,
-  XummPayloadStatus,
 } from '../types'
-import type { UpstreamEstimate } from '../domain/xrpOut'
-import { SOURCE_NETWORK, SOURCE_TICKER } from '../domain/xrpOut'
+import type { UpstreamEstimate } from '../domain/bridge'
 import { DEFAULT_FEE_BPS } from './fee'
 
 const BRIDGE = '/v1/bridge'
@@ -40,25 +37,8 @@ export async function fetchConfig(): Promise<AppConfig> {
       platformFeePercent: (DEFAULT_FEE_BPS / 100).toFixed(2),
       brand: 'Riddle Bridge',
       bridgeReady: false,
-      xamanReady: false,
     }
   }
-}
-
-export async function createXamanPayload(
-  body: Record<string, unknown>,
-): Promise<XummPayloadResponse> {
-  const res = await fetch('/api/xaman/payload', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  return parseJson<XummPayloadResponse>(res)
-}
-
-export async function pollXamanPayload(uuid: string): Promise<XummPayloadStatus> {
-  const res = await fetch(`/api/xaman/payload?uuid=${encodeURIComponent(uuid)}`)
-  return parseJson<XummPayloadStatus>(res)
 }
 
 export async function fetchCurrencies(): Promise<BridgeCurrency[]> {
@@ -68,32 +48,35 @@ export async function fetchCurrencies(): Promise<BridgeCurrency[]> {
   return data.currencies || []
 }
 
-/** XRP-out estimate — wire only (net XRP amount). */
-export async function fetchSellXrpEstimate(params: {
+export interface RoutePair {
+  fromCurrency: string
+  fromNetwork: string
   toCurrency: string
   toNetwork: string
-  netXrp: number | string
-}): Promise<UpstreamEstimate> {
+}
+
+/** Estimate for a route — wire only (net amount, after the platform cut). */
+export async function fetchEstimate(
+  route: RoutePair,
+  netAmount: number | string,
+): Promise<UpstreamEstimate> {
   const qs = new URLSearchParams({
-    fromCurrency: SOURCE_TICKER,
-    toCurrency: params.toCurrency,
-    fromAmount: String(params.netXrp),
-    fromNetwork: SOURCE_NETWORK,
-    toNetwork: params.toNetwork,
+    fromCurrency: route.fromCurrency,
+    toCurrency: route.toCurrency,
+    fromAmount: String(netAmount),
+    fromNetwork: route.fromNetwork,
+    toNetwork: route.toNetwork,
   })
   const res = await fetch(`${BRIDGE}/estimate?${qs}`)
   return parseJson<UpstreamEstimate>(res)
 }
 
-export async function fetchSellXrpMinAmount(params: {
-  toCurrency: string
-  toNetwork: string
-}): Promise<BridgeMinAmount> {
+export async function fetchMinAmount(route: RoutePair): Promise<BridgeMinAmount> {
   const qs = new URLSearchParams({
-    fromCurrency: SOURCE_TICKER,
-    toCurrency: params.toCurrency,
-    fromNetwork: SOURCE_NETWORK,
-    toNetwork: params.toNetwork,
+    fromCurrency: route.fromCurrency,
+    toCurrency: route.toCurrency,
+    fromNetwork: route.fromNetwork,
+    toNetwork: route.toNetwork,
   })
   const res = await fetch(`${BRIDGE}/min-amount?${qs}`)
   return parseJson<BridgeMinAmount>(res)
@@ -113,22 +96,28 @@ export async function validateAddress(params: {
   return parseJson<ValidateAddressResult>(res)
 }
 
-export async function createSellXrpBridge(body: {
-  toCurrency: string
-  toNetwork: string
-  netXrp: number | string
-  address: string
-}): Promise<BridgeCreateResult> {
+export async function createBridge(
+  route: RoutePair,
+  body: {
+    /** Net source amount after the platform cut */
+    netAmount: number | string
+    /** Destination address on `route.toNetwork` */
+    address: string
+    /** Where a failed swap is returned, when the source wallet is known */
+    refundAddress?: string
+  },
+): Promise<BridgeCreateResult> {
   const res = await fetch(`${BRIDGE}/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      fromCurrency: SOURCE_TICKER,
-      toCurrency: body.toCurrency,
-      fromAmount: body.netXrp,
+      fromCurrency: route.fromCurrency,
+      toCurrency: route.toCurrency,
+      fromAmount: body.netAmount,
       address: body.address,
-      fromNetwork: SOURCE_NETWORK,
-      toNetwork: body.toNetwork,
+      fromNetwork: route.fromNetwork,
+      toNetwork: route.toNetwork,
+      ...(body.refundAddress ? { refundAddress: body.refundAddress } : {}),
     }),
   })
   return parseJson<BridgeCreateResult>(res)

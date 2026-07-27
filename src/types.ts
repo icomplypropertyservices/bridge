@@ -100,39 +100,7 @@ export interface AppConfig {
   platformFeePercent: string
   brand: string
   bridgeReady?: boolean
-  /** Server has Xaman Platform credentials (Sign-In / poll) */
-  xamanReady?: boolean
 }
-
-export interface XummPayloadResponse {
-  uuid: string
-  refs?: {
-    qr_png?: string
-    qr_matrix?: string
-    websocket_status?: string
-  }
-  next?: {
-    always?: string
-    no_push_msg_received?: string
-  }
-  pushed?: boolean
-}
-
-export interface XummPayloadStatus {
-  meta: {
-    signed?: boolean
-    cancelled?: boolean
-    expired?: boolean
-    resolved?: boolean
-  }
-  response?: {
-    account?: string
-    txid?: string
-    hex?: string
-  }
-}
-
-export type ConnectStatus = 'idle' | 'pending' | 'signed' | 'rejected' | 'expired'
 
 export function currencyKey(c: Pick<BridgeCurrency, 'ticker' | 'network' | 'legacyTicker'>): string {
   return `${c.ticker}::${c.network}::${c.legacyTicker || c.ticker}`

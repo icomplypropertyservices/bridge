@@ -1,31 +1,53 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Copy, ExternalLink } from 'lucide-react'
+import { Check, Copy, ExternalLink, Loader2, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatAmount, shortAddr } from '../lib/format'
-import { buildDepositDeepLink, openXamanDeepLink, qrDataUrl } from '../lib/xaman'
-import type { BridgeCreateResult } from '../types'
+import { formatAmount, networkLabel, shortAddr } from '../lib/format'
+import { qrDataUrl } from '../lib/qr'
+import { buildDepositDeepLink, openXamanDeepLink } from '../lib/xaman'
+import { depositAmount, depositTag, isXrpSource } from '../domain/bridge'
+import { walletFamilyFor } from '../lib/wallet/networks'
+import type { BridgeCreateResult, BridgeCurrency } from '../types'
 
 interface Props {
   order: BridgeCreateResult
+  from: BridgeCurrency | null
+  /** Connected address able to fund this deposit, if any */
+  sourceWallet: string
+  paying: boolean
+  onPay: () => void
 }
 
-/** XRP-out deposit: always show Xaman payment-request deep link + QR. */
-export default function DepositPanel({ order }: Props) {
+/**
+ * Deposit instructions for the created order.
+ * XRP keeps the Xaman payment-request deep link + QR; every network shows the
+ * raw address, and a connected wallet can sign the transfer in one click.
+ */
+export default function DepositPanel({ order, from, sourceWallet, paying, onPay }: Props) {
   const [copied, setCopied] = useState<string | null>(null)
   const [qr, setQr] = useState('')
 
-  const link = useMemo(() => buildDepositDeepLink(order), [order])
-  const amount = link.amount
+  const isXrp = isXrpSource(from) || order.fromNetwork === 'xrp'
+  const amount = depositAmount(order)
+  const tag = depositTag(order)
+  const unit = order.fromCurrency.toUpperCase()
+
+  const xamanLink = useMemo(() => (isXrp ? buildDepositDeepLink(order) : null), [isXrp, order])
+  const canWalletPay = Boolean(walletFamilyFor(from?.network) && sourceWallet)
 
   useEffect(() => {
+    const href = xamanLink?.href
+    if (!href) {
+      setQr('')
+      return
+    }
     let cancelled = false
-    void qrDataUrl(link.href, 220).then((data) => {
+    void qrDataUrl(href, 220).then((data) => {
       if (!cancelled) setQr(data)
     })
     return () => {
       cancelled = true
     }
-  }, [link.href])
+  }, [xamanLink?.href])
 
   const copy = async (text: string, key: string) => {
     try {
@@ -44,30 +66,48 @@ export default function DepositPanel({ order }: Props) {
         Deposit to complete
       </div>
       <h3 className="text-lg font-semibold">
-        Send exactly {formatAmount(amount)} XRP
+        Send exactly {formatAmount(amount)} {unit}
       </h3>
       <p className="mt-1 text-sm text-riddle-muted">
         Order <span className="font-mono text-zinc-400">{order.id}</span>
       </p>
 
       <div className="mt-4 space-y-3">
-        <button
-          type="button"
-          className="btn-primary w-full"
-          onClick={() => openXamanDeepLink(link)}
-        >
-          <ExternalLink className="h-4 w-4" />
-          Open in Xaman
-        </button>
+        {canWalletPay && (
+          <button type="button" className="btn-primary w-full" disabled={paying} onClick={onPay}>
+            {paying ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Confirm in wallet…
+              </>
+            ) : (
+              <>
+                <Wallet className="h-4 w-4" /> Pay from {shortAddr(sourceWallet)}
+              </>
+            )}
+          </button>
+        )}
+
+        {xamanLink && (
+          <button
+            type="button"
+            className={canWalletPay ? 'btn-ghost w-full' : 'btn-primary w-full'}
+            onClick={() => openXamanDeepLink(xamanLink)}
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open in Xaman
+          </button>
+        )}
 
         {qr && (
-          <div className="mx-auto w-fit rounded-2xl border border-riddle-border bg-white p-2.5">
-            <img src={qr} alt="Scan to open Xaman payment" className="h-[200px] w-[200px]" />
-          </div>
+          <>
+            <div className="mx-auto w-fit rounded-2xl border border-riddle-border bg-white p-2.5">
+              <img src={qr} alt="Scan to open Xaman payment" className="h-[200px] w-[200px]" />
+            </div>
+            <p className="text-center text-[11px] text-riddle-muted">
+              Deep link / QR · amount &amp; destination tag included
+            </p>
+          </>
         )}
-        <p className="text-center text-[11px] text-riddle-muted">
-          Deep link / QR · amount & destination tag included
-        </p>
       </div>
 
       <div className="mt-4 space-y-3">
@@ -77,12 +117,12 @@ export default function DepositPanel({ order }: Props) {
           copied={copied === 'addr'}
           onCopy={() => copy(order.payinAddress, 'addr')}
         />
-        {order.payinExtraId && (
+        {tag && (
           <CopyField
             label={order.payinExtraIdName || 'Memo / Destination tag'}
-            value={String(order.payinExtraId)}
+            value={tag}
             copied={copied === 'tag'}
-            onCopy={() => copy(String(order.payinExtraId), 'tag')}
+            onCopy={() => copy(tag, 'tag')}
             warn
           />
         )}
@@ -100,8 +140,8 @@ export default function DepositPanel({ order }: Props) {
           {order.fromNetwork && order.toNetwork && (
             <div className="flex justify-between gap-2 py-1">
               <span className="text-riddle-muted">Route</span>
-              <span className="text-xs uppercase">
-                {order.fromNetwork} → {order.toNetwork}
+              <span className="text-xs">
+                {networkLabel(order.fromNetwork)} → {networkLabel(order.toNetwork)}
               </span>
             </div>
           )}
@@ -109,7 +149,9 @@ export default function DepositPanel({ order }: Props) {
       </div>
 
       <p className="mt-3 text-[11px] leading-relaxed text-amber-200/80">
-        Prefer the Xaman deep link. If you send manually, use the exact amount and destination tag.
+        {canWalletPay
+          ? 'Paying from the connected wallet fills the amount and tag for you.'
+          : 'If you send manually, use the exact amount' + (tag ? ' and destination tag.' : '.')}
       </p>
     </div>
   )

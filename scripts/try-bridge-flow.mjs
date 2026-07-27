@@ -30,23 +30,25 @@ try {
   await page.goto('http://localhost:5177/', { waitUntil: 'domcontentloaded', timeout: 45000 })
   result.steps.push('loaded app')
 
-  // Wait until currencies loaded (XRP shown, not "Select")
+  // Wait until currencies loaded — both selectors resolve off "Select"
   await page.waitForFunction(
     () => {
       const t = document.body.innerText
-      return t.includes('Bridge assets') && (t.includes('XRP') || t.includes('Ripple')) && !t.includes('Rate limit exceeded')
+      return (
+        t.includes('assets') &&
+        (t.includes('XRP') || t.includes('Ripple')) &&
+        !t.includes('Loading markets') &&
+        !t.includes('Rate limit exceeded')
+      )
     },
     { timeout: 45000 },
   )
   result.steps.push('currencies loaded')
 
-  // Click YOU RECEIVE select button (contains current token name)
-  const receiveSection = page.locator('label:has-text("YOU RECEIVE"), div:has-text("YOU RECEIVE")').first()
-  // Prefer: the button under the YOU RECEIVE label in the form
+  // Both sides are CurrencySelects: first is "You send", second is "You receive"
   const currencyButtons = page.locator('.glass-card button').filter({
     has: page.locator('div.font-semibold, .font-semibold'),
   })
-  // First is YOU SEND, second is YOU RECEIVE
   const count = await currencyButtons.count()
   result.steps.push(`currency buttons=${count}`)
   if (count < 2) throw new Error('currency selectors not ready')
@@ -89,11 +91,10 @@ try {
       result.steps.push(`popup: ${popup.url()}`)
       await popup.close().catch(() => {})
     }
-    const openA = page.locator('a:has-text("Open in Xaman")')
-    if (await openA.count()) {
-      result.deepLink = result.deepLink || (await openA.first().getAttribute('href'))
-      result.steps.push(`href: ${await openA.first().getAttribute('href')}`)
-    }
+    // "Open in Xaman" is a button that calls openXamanDeepLink — the link is
+    // rebuilt from the order, so assert against the order rather than an href.
+    const xamanBtn = await page.locator('button:has-text("Open in Xaman")').count()
+    result.steps.push(xamanBtn ? 'Xaman button present' : 'Xaman button missing')
     const qr = await page.locator('img[alt*="Xaman" i], img[alt*="Scan" i]').count()
     result.steps.push(qr ? 'QR present' : 'QR missing')
     result.steps.push((await page.locator('text=Bridge status').count()) ? 'status panel' : 'no status')
