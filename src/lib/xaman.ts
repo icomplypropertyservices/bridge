@@ -1,11 +1,13 @@
 /**
- * Xaman helpers:
- * - Connect: Platform Sign-In (server proxy) — see useWalletConnect
- * - Deposit execute: payment-request deep link (no Platform payload)
+ * Xaman helpers — XRP deposits only.
+ *
+ * This is a plain payment-request deep link: no Platform API, no payload, no
+ * server credentials. Wallet *connection* is handled by WalletConnect
+ * (see hooks/useWallet); Xaman stays purely as a way to pay an XRP deposit.
  */
-import QRCode from 'qrcode'
 import type { BridgeCreateResult } from '../types'
-import { depositAmount } from '../domain/xrpOut'
+import { depositAmount, depositTag } from '../domain/bridge'
+import { isMobileUa } from './ua'
 
 export interface XamanOpenUrls {
   web: string
@@ -18,11 +20,6 @@ export interface DepositDeepLink extends XamanOpenUrls {
   amount: number | string
   address: string
   destinationTag?: string | null
-}
-
-export function isMobileUa(): boolean {
-  if (typeof navigator === 'undefined') return false
-  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 }
 
 /**
@@ -59,10 +56,7 @@ export function openXamanUrls(urls: XamanOpenUrls): void {
 export function buildDepositDeepLink(order: BridgeCreateResult): DepositDeepLink {
   const address = order.payinAddress.trim()
   const amount = depositAmount(order)
-  const tag =
-    order.payinExtraId != null && String(order.payinExtraId).trim() !== ''
-      ? String(order.payinExtraId).trim()
-      : null
+  const tag = depositTag(order)
 
   const qs = new URLSearchParams()
   if (amount > 0) qs.set('amount', String(amount))
@@ -86,16 +80,11 @@ export function openXamanDeepLink(link: DepositDeepLink): void {
   openXamanUrls({ web: link.web, native: link.native })
 }
 
+/** Sign-In payload links. Xaman is absent from the WalletConnect registry, so
+ *  connecting it uses the Platform payload rather than a wc: pairing. */
 export function signInUrls(uuid: string, nextAlways?: string): XamanOpenUrls {
   const web = nextAlways || `https://xumm.app/sign/${uuid}`
   const native = `xumm://xumm.app/sign/${uuid}`
   return { web, native }
 }
 
-export async function qrDataUrl(href: string, size = 240): Promise<string> {
-  return QRCode.toDataURL(href, {
-    width: size,
-    margin: 2,
-    color: { dark: '#0b0b12', light: '#ffffff' },
-  })
-}

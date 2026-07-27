@@ -1,17 +1,25 @@
+/**
+ * Xaman Sign-In.
+ *
+ * Xaman is not in the WalletConnect registry and has no WC v2 support, so it
+ * cannot join the `xrpl:0` pairing that Joey uses. Connecting it means creating
+ * a Platform Sign-In payload server-side and polling until the user approves:
+ *  - desktop → QR in the modal
+ *  - mobile  → deep link into the app; the uuid is kept in localStorage so a
+ *              return_url reload resumes the same poll
+ */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { createXamanPayload, pollXamanPayload } from '../lib/api'
-import { isMobileUa, openXamanUrls, signInUrls } from '../lib/xaman'
+import { openXamanUrls, signInUrls } from '../lib/xaman'
+import { isMobileUa } from '../lib/ua'
 import { shortAddr } from '../lib/format'
 import type { ConnectStatus, XummPayloadResponse } from '../types'
 
 const PENDING_KEY = 'riddle.xaman.pending'
 const ADDRESS_KEY = 'riddle.xaman.address'
 
-type PendingConnect = {
-  uuid: string
-  createdAt: number
-}
+type PendingConnect = { uuid: string; createdAt: number }
 
 function storageGet(key: string): string | null {
   try {
@@ -54,19 +62,11 @@ function readPending(): PendingConnect | null {
 }
 
 function writePending(uuid: string) {
-  storageSet(
-    PENDING_KEY,
-    JSON.stringify({ uuid, createdAt: Date.now() } satisfies PendingConnect),
-  )
+  storageSet(PENDING_KEY, JSON.stringify({ uuid, createdAt: Date.now() } satisfies PendingConnect))
 }
 
-function clearPending() {
-  storageRemove(PENDING_KEY)
-}
-
-function readStoredAddress(): string {
-  return storageGet(ADDRESS_KEY) || ''
-}
+const clearPending = () => storageRemove(PENDING_KEY)
+const readStoredAddress = () => storageGet(ADDRESS_KEY) || ''
 
 function writeStoredAddress(addr: string) {
   if (addr) storageSet(ADDRESS_KEY, addr)
@@ -86,12 +86,7 @@ function stripXamanQuery() {
   }
 }
 
-/**
- * Connect Wallet via Xaman Sign-In:
- * - desktop → QR modal + poll
- * - mobile → open Xaman; return_url lands on same origin; localStorage uuid resumes poll
- */
-export function useWalletConnect() {
+export function useXamanConnect() {
   const [address, setAddress] = useState(() => readStoredAddress())
   const [connecting, setConnecting] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
@@ -117,8 +112,8 @@ export function useWalletConnect() {
     clearPoll()
     setModalOpen(false)
     setConnecting(false)
-    if (status === 'pending') setStatus('idle')
-  }, [clearPoll, status])
+    setStatus((s) => (s === 'pending' ? 'idle' : s))
+  }, [clearPoll])
 
   const finishSigned = useCallback(
     (acc: string) => {
@@ -131,7 +126,7 @@ export function useWalletConnect() {
       setStatus('signed')
       setConnecting(false)
       setModalOpen(false)
-      toast.success(`Connected ${shortAddr(acc)}`)
+      toast.success(`Xaman connected ${shortAddr(acc)}`)
     },
     [clearPoll],
   )
@@ -155,7 +150,7 @@ export function useWalletConnect() {
             clearPending()
             setStatus('rejected')
             setConnecting(false)
-            toast.error('Connect timed out — try again')
+            toast.error('Xaman connect timed out — try again')
             return
           }
 
@@ -191,7 +186,7 @@ export function useWalletConnect() {
     [clearPoll, finishSigned],
   )
 
-  // Resume after mobile return_url (fresh load) or unfinished pending session
+  // Resume after a mobile return_url reload, or an unfinished pending session
   useEffect(() => {
     if (resumedRef.current) return
     resumedRef.current = true
@@ -202,7 +197,6 @@ export function useWalletConnect() {
       return
     }
 
-    // ?xaman=1 is a return marker; ?xaman=<uuid> is a direct resume hint
     let uuid: string | null = null
     try {
       const q = new URL(window.location.href).searchParams.get('xaman')
@@ -211,7 +205,6 @@ export function useWalletConnect() {
       /* ignore */
     }
     if (!uuid) uuid = readPending()?.uuid ?? null
-    // Landing from return_url with only marker still uses pending uuid
     if (!uuid) return
 
     setConnecting(true)
@@ -220,7 +213,7 @@ export function useWalletConnect() {
     startPoll(uuid)
   }, [startPoll])
 
-  // Immediate status check when returning from Xaman to an existing tab
+  // Returning to an existing tab should settle immediately, not on the next tick
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState !== 'visible') return
@@ -252,9 +245,6 @@ export function useWalletConnect() {
     clearPoll()
 
     try {
-      // return_url = same origin (path only). uuid is stored in localStorage so
-      // when Xaman reloads this page after sign, we resume polling and pick up
-      // the signed account. Also accept ?xaman=uuid if present (manual links).
       const returnUrl =
         typeof window !== 'undefined'
           ? `${window.location.origin}${window.location.pathname}?xaman=1`
@@ -264,17 +254,11 @@ export function useWalletConnect() {
         txjson: { TransactionType: 'SignIn' },
         options: {
           expire: 5,
-          return_url: {
-            app: returnUrl,
-            web: returnUrl,
-          },
+          return_url: { app: returnUrl, web: returnUrl },
         },
-        custom_meta: {
-          instruction: 'Connect to Riddle Bridge',
-        },
+        custom_meta: { instruction: 'Connect to Riddle Bridge' },
       })
 
-      // Store real uuid under pending; ?xaman=1 is only a return marker
       writePending(data.uuid)
       setPayload(data)
       setModalOpen(true)
@@ -284,7 +268,7 @@ export function useWalletConnect() {
     } catch (e) {
       setConnecting(false)
       setStatus('idle')
-      toast.error(e instanceof Error ? e.message : 'Could not start Connect Wallet')
+      toast.error(e instanceof Error ? e.message : 'Could not start Xaman Sign-In')
     }
   }, [connecting, clearPoll, startPoll])
 
@@ -303,7 +287,6 @@ export function useWalletConnect() {
     setStatus('idle')
     setModalOpen(false)
     setConnecting(false)
-    toast.info('Disconnected')
   }, [clearPoll])
 
   return {
@@ -316,6 +299,5 @@ export function useWalletConnect() {
     disconnect,
     closeModal,
     openDeepLink,
-    setAddress,
   }
 }

@@ -74,10 +74,10 @@ function attachBridgeMiddleware(
   env: Record<string, string>,
 ) {
   const cfg = buildConfigJson(env)
-  if (!cfg.bridgeReady) console.warn('[riddle-bridge] XRPL_TO_API_KEY empty')
-  else console.info('[riddle-bridge] Bridge API ready')
-  if (!cfg.xamanReady) console.warn('[riddle-bridge] Xaman keys missing')
-  else console.info('[riddle-bridge] Xaman ready')
+  if (!cfg.bridgeKeyed) console.warn('[riddle-bridge] XRPL_TO_API_KEY empty — running unauthenticated at a low rate limit')
+  else console.info('[riddle-bridge] Bridge API key present')
+  if (!cfg.xamanReady) console.warn('[riddle-bridge] Xaman keys missing — Sign-In hidden')
+  else console.info('[riddle-bridge] Xaman Sign-In ready')
 
   const getCache = new Map<string, { out: { status: number; body: string; contentType: string; cacheControl?: string }; expires: number }>()
 
@@ -90,8 +90,7 @@ function attachBridgeMiddleware(
   server.middlewares.use('/api/xaman/payload', async (req, res) => {
     try {
       const url = new URL(req.url || '', 'http://local')
-      const body =
-        req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : undefined
+      const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : undefined
       const out = await proxyXaman(
         {
           method: req.method || 'GET',

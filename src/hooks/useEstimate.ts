@@ -1,21 +1,36 @@
 import { useEffect, useState } from 'react'
-import { fetchSellXrpEstimate, fetchSellXrpMinAmount } from '../lib/api'
+import { fetchEstimate, fetchMinAmount, type RoutePair } from '../lib/api'
 import { splitFee } from '../lib/fee'
-import { buildQuoteView, type QuoteView } from '../domain/xrpOut'
+import { buildQuoteView, type QuoteView } from '../domain/bridge'
 import type { BridgeCurrency } from '../types'
 
-/** Quote for Sell XRP → `to`. No generic from-currency. */
-export function useEstimate(to: BridgeCurrency | null, amount: string, feeBps: number) {
+/** Quote for `from` → `to`, debounced, with the platform cut applied first. */
+export function useEstimate(
+  from: BridgeCurrency | null,
+  to: BridgeCurrency | null,
+  amount: string,
+  feeBps: number,
+) {
   const [quote, setQuote] = useState<QuoteView | null>(null)
   const [minAmount, setMinAmount] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const fromKey = from ? `${from.ticker}::${from.network}` : ''
+  const toKey = to ? `${to.ticker}::${to.network}` : ''
+
   useEffect(() => {
-    if (!to) {
+    if (!from || !to) {
       setQuote(null)
       setMinAmount(null)
       return
+    }
+
+    const route: RoutePair = {
+      fromCurrency: from.ticker,
+      fromNetwork: from.network,
+      toCurrency: to.ticker,
+      toNetwork: to.network,
     }
 
     let cancelled = false
@@ -23,24 +38,19 @@ export function useEstimate(to: BridgeCurrency | null, amount: string, feeBps: n
       const gross = parseFloat(amount)
 
       const [minRes, estRes] = await Promise.allSettled([
-        fetchSellXrpMinAmount({ toCurrency: to.ticker, toNetwork: to.network }),
+        fetchMinAmount(route),
         Number.isFinite(gross) && gross > 0
           ? (async () => {
               const { net } = splitFee(gross, feeBps)
               if (net <= 0) return null
-              return fetchSellXrpEstimate({
-                toCurrency: to.ticker,
-                toNetwork: to.network,
-                netXrp: net,
-              })
+              return fetchEstimate(route, net)
             })()
           : Promise.resolve(null),
       ])
 
       if (cancelled) return
 
-      const min =
-        minRes.status === 'fulfilled' ? Number(minRes.value.minAmount) || null : null
+      const min = minRes.status === 'fulfilled' ? Number(minRes.value.minAmount) || null : null
       setMinAmount(min)
 
       if (!Number.isFinite(gross) || gross <= 0) {
@@ -59,7 +69,7 @@ export function useEstimate(to: BridgeCurrency | null, amount: string, feeBps: n
           setError(null)
           return
         }
-        setQuote(buildQuoteView(to, gross, feeBps, raw, min))
+        setQuote(buildQuoteView({ from, to, gross, feeBps, raw, minAmount: min }))
         setError(null)
       } catch (e) {
         setQuote(null)
@@ -73,7 +83,9 @@ export function useEstimate(to: BridgeCurrency | null, amount: string, feeBps: n
       cancelled = true
       clearTimeout(t)
     }
-  }, [to, amount, feeBps])
+    // `from`/`to` are compared by identity keys so a re-fetched list does not re-query.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromKey, toKey, amount, feeBps])
 
   return { quote, minAmount, loading, error }
 }

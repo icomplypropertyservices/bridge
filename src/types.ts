@@ -100,7 +100,9 @@ export interface AppConfig {
   platformFeePercent: string
   brand: string
   bridgeReady?: boolean
-  /** Server has Xaman Platform credentials (Sign-In / poll) */
+  /** A bridge API key is configured — absent means low upstream rate limits */
+  bridgeKeyed?: boolean
+  /** Server holds Xaman Platform credentials — Sign-In can be offered */
   xamanReady?: boolean
 }
 

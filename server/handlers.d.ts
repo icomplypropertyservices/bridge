@@ -7,6 +7,7 @@ export function buildConfigJson(env: Record<string, string | undefined>): {
   platformFeePercent: string
   brand: string
   bridgeReady: boolean
+  bridgeKeyed: boolean
   xamanReady: boolean
 }
 export function proxyBridge(

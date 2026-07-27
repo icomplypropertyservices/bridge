@@ -9,7 +9,7 @@ interface Props {
   onOpenDeepLink: () => void
 }
 
-export default function ConnectModal({ open, payload, status, onClose, onOpenDeepLink }: Props) {
+export default function XamanConnectModal({ open, payload, status, onClose, onOpenDeepLink }: Props) {
   if (!open || !payload) return null
 
   const web = payload.next?.always || `https://xumm.app/sign/${payload.uuid}`
@@ -22,7 +22,7 @@ export default function ConnectModal({ open, payload, status, onClose, onOpenDee
       <div className="glass-card w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-xl font-semibold">Connect Wallet</h3>
+            <h3 className="text-xl font-semibold">Connect Xaman</h3>
             <p className="mt-1 text-sm text-riddle-muted">
               Scan the QR on web, or open Xaman on mobile — waiting for approval
             </p>

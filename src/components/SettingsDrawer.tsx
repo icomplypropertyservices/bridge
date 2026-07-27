@@ -27,21 +27,22 @@ export default function SettingsDrawer({ open, onClose, feePercent }: Props) {
             <div className="text-xs uppercase tracking-wider text-riddle-muted">Platform cut</div>
             <div className="mt-1 text-2xl font-semibold text-violet-300">{feePercent}%</div>
             <p className="mt-1 text-[11px] text-riddle-muted">
-              Reduces deposit size (net XRP bridged). Not a separate fee-wallet payment.
+              Reduces deposit size (net amount bridged). Not a separate fee-wallet payment.
             </p>
           </div>
 
           <div className="rounded-2xl border border-riddle-border bg-black/30 p-4 text-[11px] text-riddle-muted leading-relaxed space-y-2">
             <p className="font-medium text-zinc-300">Connect Wallet</p>
             <p>
-              Xaman Sign-In: QR on desktop, deep link opens the app on mobile. We poll until you
-              approve — no paste address.
+              WalletConnect via Reown AppKit for Ethereum/EVM and Solana. XRPL connects over
+              WalletConnect v2 (<code className="text-zinc-400">xrpl:0</code>) — Joey Wallet and any
+              other XRPL wallet that supports it.
             </p>
             <p className="font-medium text-zinc-300 pt-1">Deposits</p>
             <p>
-              XRPL deposits use{' '}
+              A connected wallet signs the deposit directly. XRP additionally supports{' '}
               <code className="text-zinc-400">xaman.app/detect/request:…</code> deep links with
-              amount & tag.
+              amount &amp; tag — no connection required.
             </p>
           </div>
         </div>
