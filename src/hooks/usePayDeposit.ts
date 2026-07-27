@@ -50,6 +50,69 @@ export function usePayDeposit(addresses: WalletAddresses, { xrplCanSign }: Optio
     [addresses, solanaProvider, xrplCanSign],
   )
 
+  /**
+   * Send an arbitrary amount on the source chain — used for both the platform
+   * fee (step 1) and the bridge deposit (step 2), so the two share one signing
+   * path per chain.
+   */
+  const send = useCallback(
+    async (
+      from: BridgeCurrency,
+      to: string,
+      amount: number | string,
+      memo: string | null,
+    ): Promise<PayResult> => {
+      const family = walletFamilyFor(from.network)
+      if (!family) {
+        throw new Error(`No wallet support for ${from.network.toUpperCase()} — send manually`)
+      }
+      if (!to) throw new Error('No destination address')
+
+      if (family === 'eip155') {
+        const chainId = evmChainIdFor(from.network)
+        if (chainId == null) throw new Error(`Unsupported EVM network: ${from.network}`)
+        if (!addresses.eip155) throw new Error('Connect an EVM wallet first')
+        const txId = await payEvm({ chainId, to, amount, tokenContract: from.tokenContract })
+        return { txId, network: from.network }
+      }
+
+      if (family === 'solana') {
+        if (!addresses.solana) throw new Error('Connect a Solana wallet first')
+        if (!solanaProvider) throw new Error('Solana provider is not ready')
+        const txId = await paySolana({
+          provider: solanaProvider,
+          connection,
+          from: addresses.solana,
+          to,
+          amount,
+          tokenMint: from.tokenContract,
+          memo,
+        })
+        return { txId, network: from.network }
+      }
+
+      if (!addresses.xrpl || !xrplCanSign) {
+        throw new Error('Connect Joey Wallet to sign — Xaman pays via its deep link')
+      }
+      const { hash } = await payXrpl({
+        from: addresses.xrpl,
+        destination: to,
+        amountXrp: amount,
+        destinationTag: memo,
+      })
+      if (!hash) throw new Error('Wallet signed the payment but returned no transaction hash')
+      return { txId: hash, network: from.network }
+    },
+    [addresses, connection, solanaProvider, xrplCanSign],
+  )
+
+  /** Step 1 — platform fee to the chain's fee wallet. */
+  const payFee = useCallback(
+    (from: BridgeCurrency, feeAddress: string, amount: number | string) =>
+      send(from, feeAddress, amount, null),
+    [send],
+  )
+
   const pay = useCallback(
     async (order: BridgeCreateResult, from: BridgeCurrency): Promise<PayResult> => {
       const family = walletFamilyFor(from.network)
@@ -105,5 +168,5 @@ export function usePayDeposit(addresses: WalletAddresses, { xrplCanSign }: Optio
     [addresses, connection, solanaProvider, xrplCanSign],
   )
 
-  return { pay, canPay }
+  return { pay, payFee, canPay }
 }

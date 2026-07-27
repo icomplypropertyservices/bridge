@@ -7,14 +7,16 @@ import StatusPanel from './components/StatusPanel'
 import SettingsDrawer from './components/SettingsDrawer'
 import JoeyConnectModal from './components/JoeyConnectModal'
 import XamanConnectModal from './components/XamanConnectModal'
+import HistoryPanel from './components/HistoryPanel'
 import { useCurrencies } from './hooks/useCurrencies'
 import { useEstimate } from './hooks/useEstimate'
 import { useBridgeStatus } from './hooks/useBridgeStatus'
 import { useBridgeFlow } from './hooks/useBridgeFlow'
+import { useBridgeHistory } from './hooks/useBridgeHistory'
 import { useWallet } from './hooks/useWallet'
 import { usePayDeposit } from './hooks/usePayDeposit'
 import { fetchConfig } from './lib/api'
-import { DEFAULT_FEE_BPS } from './lib/fee'
+import { DEFAULT_FEE_BPS, splitFee } from './lib/fee'
 import { walletConnectConfigured } from './lib/wallet/appkit'
 import { walletFamilyFor } from './lib/wallet/networks'
 import type { AppConfig, BridgeCreateResult, BridgeCurrency } from './types'
@@ -43,7 +45,10 @@ export default function App() {
   const [order, setOrder] = useState<BridgeCreateResult | null>(null)
 
   const wallet = useWallet()
-  const { pay, canPay } = usePayDeposit(wallet.addresses, { xrplCanSign: wallet.xrplCanSign })
+  const { pay, payFee, canPay } = usePayDeposit(wallet.addresses, {
+    xrplCanSign: wallet.xrplCanSign,
+  })
+  const history = useBridgeHistory()
 
   const { quote, minAmount, loading: estimateLoading, error: estimateError } = useEstimate(
     from,
@@ -69,10 +74,17 @@ export default function App() {
     feeBps,
     minAmount,
     refundAddress: sourceWallet,
+    feeAddresses: config?.feeAddresses,
     onCreated,
+    onHistoryChange: history.refresh,
     pay,
+    payFee,
     canPay,
   })
+
+  const grossAmount = parseFloat(amount) || 0
+  const { fee: feeAmount } = splitFee(grossAmount, feeBps)
+  const activeRecord = order ? history.records.find((r) => r.id === order.id) : undefined
 
   useEffect(() => {
     void fetchConfig().then(setConfig)
@@ -193,12 +205,27 @@ export default function App() {
               from={from}
               sourceWallet={sourceWallet}
               paying={flow.paying}
+              feeStep={flow.feeStep}
+              depositStep={flow.depositStep}
+              feeAmount={activeRecord?.feeAmount ?? feeAmount}
+              feeAddresses={config?.feeAddresses}
+              feeTxId={activeRecord?.feeTxId ?? null}
+              depositTxId={activeRecord?.depositTxId ?? null}
               onPay={() => {
-                if (from) void flow.payOrder(order, from)
+                if (from) void flow.payOrder(order, from, activeRecord?.feeAmount ?? feeAmount)
               }}
             />
           )}
           <StatusPanel status={status} polling={polling} bridgeId={bridgeId} />
+
+          <HistoryPanel
+            records={history.records}
+            activeId={bridgeId}
+            onSelect={(r) => setBridgeId(r.id)}
+            onRemove={history.remove}
+            onClear={history.clear}
+          />
+
           {!order && howItWorks}
         </div>
       </main>

@@ -48,6 +48,16 @@ function resolveServerEnv(mode: string, cwd: string): Record<string, string> {
     XUMM_API_KEY: process.env.XUMM_API_KEY || fromVite.XUMM_API_KEY || fromFile.XUMM_API_KEY || '',
     XUMM_API_SECRET:
       process.env.XUMM_API_SECRET || fromVite.XUMM_API_SECRET || fromFile.XUMM_API_SECRET || '',
+    ...Object.fromEntries(
+      [
+        'PLATFORM_FEE_ADDRESS',
+        'PLATFORM_FEE_ADDRESS_XRPL',
+        'PLATFORM_FEE_ADDRESS_EVM',
+        'PLATFORM_FEE_ADDRESS_ETH',
+        'PLATFORM_FEE_ADDRESS_SOL',
+        'PLATFORM_FEE_ADDRESS_SOLANA',
+      ].map((k) => [k, process.env[k] || fromVite[k] || fromFile[k] || '']),
+    ),
   }
 }
 

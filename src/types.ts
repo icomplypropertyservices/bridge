@@ -96,6 +96,8 @@ export interface ValidateAddressResult {
 }
 
 export interface AppConfig {
+  /** Fee wallet per chain family; a family with no address has no fee step */
+  feeAddresses?: { xrpl?: string; eip155?: string; solana?: string }
   platformFeeBps: number
   platformFeePercent: string
   brand: string

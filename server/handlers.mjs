@@ -21,6 +21,26 @@ export function rewriteLogoHosts(text) {
   return String(text).replace(/content-api\.bridge\.io/g, 'content-api.changenow.io')
 }
 
+/**
+ * Fee wallets, one per chain family. A fee address is chain-specific — the
+ * XRPL r-address cannot receive ETH or SOL — so each family carries its own,
+ * and a family with no address configured simply has no fee step.
+ */
+function buildFeeAddresses(env) {
+  const pick = (...names) => {
+    for (const n of names) {
+      const v = String(env[n] || '').trim()
+      if (v) return v
+    }
+    return ''
+  }
+  return {
+    xrpl: pick('PLATFORM_FEE_ADDRESS_XRPL', 'PLATFORM_FEE_ADDRESS'),
+    eip155: pick('PLATFORM_FEE_ADDRESS_EVM', 'PLATFORM_FEE_ADDRESS_ETH'),
+    solana: pick('PLATFORM_FEE_ADDRESS_SOL', 'PLATFORM_FEE_ADDRESS_SOLANA'),
+  }
+}
+
 export function buildConfigJson(env) {
   const feeBps = Number(env.PLATFORM_FEE_BPS || '85')
   const apiKey = String(env.XRPL_TO_API_KEY || '').trim()
@@ -28,6 +48,7 @@ export function buildConfigJson(env) {
   const xummSecret = String(env.XUMM_API_SECRET || '').trim()
   const bps = Number.isFinite(feeBps) ? feeBps : 85
   return {
+    feeAddresses: buildFeeAddresses(env),
     platformFeeBps: bps,
     platformFeePercent: (bps / 100).toFixed(2),
     brand: 'Riddle Bridge',
