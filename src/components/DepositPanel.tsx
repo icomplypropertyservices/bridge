@@ -33,6 +33,7 @@ export default function DepositPanel({ order, from, sourceWallet, paying, onPay 
 
   const xamanLink = useMemo(() => (isXrp ? buildDepositDeepLink(order) : null), [isXrp, order])
   const canWalletPay = Boolean(walletFamilyFor(from?.network) && sourceWallet)
+  const feeNote = 'platform cut'
 
   useEffect(() => {
     const href = xamanLink?.href
@@ -63,7 +64,7 @@ export default function DepositPanel({ order, from, sourceWallet, paying, onPay 
   return (
     <div className="glass-card p-5">
       <div className="mb-1 text-xs font-medium uppercase tracking-wider text-violet-300">
-        Deposit to complete
+        Step 2 of 2 · Pay the deposit
       </div>
       <h3 className="text-lg font-semibold">
         Send exactly {formatAmount(amount)} {unit}
@@ -71,6 +72,22 @@ export default function DepositPanel({ order, from, sourceWallet, paying, onPay 
       <p className="mt-1 text-sm text-riddle-muted">
         Order <span className="font-mono text-zinc-400">{order.id}</span>
       </p>
+
+      {/* The order alone moves nothing — say so, because a created order looks
+          finished and users have stopped here thinking the bridge was done. */}
+      <div className="mt-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3">
+        <div className="text-sm font-semibold text-amber-200">
+          Not sent yet — the bridge is waiting for your {unit}
+        </div>
+        <p className="mt-1 text-[12px] leading-relaxed text-amber-200/80">
+          The order is reserved but nothing has moved. Send exactly{' '}
+          <strong className="text-amber-100">
+            {formatAmount(amount)} {unit}
+          </strong>
+          {tag ? ' with the tag below' : ''} to finish. The {feeNote} was already taken off this
+          amount — there is no separate fee payment.
+        </p>
+      </div>
 
       <div className="mt-4 space-y-3">
         {canWalletPay && (
@@ -81,7 +98,8 @@ export default function DepositPanel({ order, from, sourceWallet, paying, onPay 
               </>
             ) : (
               <>
-                <Wallet className="h-4 w-4" /> Pay from {shortAddr(sourceWallet)}
+                <Wallet className="h-4 w-4" /> Pay {formatAmount(amount)} {unit} from{' '}
+                {shortAddr(sourceWallet)}
               </>
             )}
           </button>
@@ -94,7 +112,7 @@ export default function DepositPanel({ order, from, sourceWallet, paying, onPay 
             onClick={() => openXamanDeepLink(xamanLink)}
           >
             <ExternalLink className="h-4 w-4" />
-            Open in Xaman
+            Pay {formatAmount(amount)} {unit} in Xaman
           </button>
         )}
 
