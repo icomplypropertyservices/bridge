@@ -51,8 +51,11 @@ export default function DepositPanel({
   const canWalletPay = Boolean(walletFamilyFor(from?.network) && sourceWallet)
 
   // No fee wallet for this chain → the cut stays a deduction, so there is no step 1.
-  const feeTarget = feeTargetFor(walletFamilyFor(from?.network), feeAddresses)
+  const sourceFamily = walletFamilyFor(from?.network)
+  const feeTarget = feeTargetFor(sourceFamily, feeAddresses)
   const hasFeeStep = Boolean(feeTarget && feeAmount > 0)
+  // Skipping step 1 silently reads like a bug; name the reason.
+  const feeStepSkipped = Boolean(sourceFamily && !feeTarget && feeAmount > 0)
 
   useEffect(() => {
     const href = xamanLink?.href
@@ -108,6 +111,22 @@ export default function DepositPanel({
             {hasFeeStep
               ? ` Two payments are needed: the ${formatAmount(feeAmount)} ${unit} platform fee, then the ${formatAmount(amount)} ${unit} deposit.`
               : ` Send exactly ${formatAmount(amount)} ${unit}${tag ? ' with the tag below' : ''} to finish. The platform cut was already taken off this amount — there is no separate fee payment.`}
+          </p>
+        </div>
+      )}
+
+      {feeStepSkipped && (
+        <div className="mt-3 rounded-2xl border border-riddle-border bg-black/30 p-3">
+          <div className="text-[12px] font-medium text-zinc-300">
+            One transaction only on {networkLabel(from?.network || '')}
+          </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-riddle-muted">
+            No fee wallet is configured for this chain, so the {formatAmount(feeAmount)} {unit} cut
+            was deducted from the deposit instead of being sent separately. Set{' '}
+            <code className="text-zinc-400">
+              PLATFORM_FEE_ADDRESS_{sourceFamily === 'solana' ? 'SOL' : 'EVM'}
+            </code>{' '}
+            to collect it as its own transaction.
           </p>
         </div>
       )}
