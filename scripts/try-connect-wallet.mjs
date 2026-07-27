@@ -97,14 +97,16 @@ try {
   const hasSol = /Phantom, Solflare/i.test(menuText)
   const hasJoey = /Joey Wallet/i.test(menuText)
   const hasXaman = /Sign-In \+ deep link/i.test(menuText)
-  step(`connect rows=${rows}`)
+  const hasStellar = /LOBSTR/i.test(menuText)
+  step(`connect rows=${rows} stellar=${hasStellar}`)
+  if (!hasStellar) result.errors.push('Stellar option missing from wallet menu')
   step(`menu: evm=${hasEvm} solana=${hasSol} joey=${hasJoey} xaman=${hasXaman}`)
   result.menu = { evm: hasEvm, solana: hasSol, joey: hasJoey, xaman: hasXaman }
   if (!hasEvm || !hasSol || !hasJoey) result.errors.push('wallet menu missing a stack')
   if (!hasXaman) result.errors.push('Xaman option missing from wallet menu')
 
   // --- 2. XRPL / Joey pairing ----------------------------------------------
-  await page.getByRole('button', { name: /^Connect$/ }).nth(2).click()
+  await page.getByRole('button', { name: /^Connect$/ }).nth(3).click()
   step('clicked Joey connect')
 
   const joeyQr = await page
@@ -173,7 +175,7 @@ try {
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(2500)
   await openWalletMenu()
-  await page.getByRole('button', { name: /^Connect$/ }).nth(3).click()
+  await page.getByRole('button', { name: /^Connect$/ }).nth(4).click()
   step('clicked Xaman connect')
 
   const xamanQr = await page
@@ -188,6 +190,26 @@ try {
   if (!xamanQr) result.errors.push('Xaman Sign-In produced no QR')
 
   await page.screenshot({ path: 'wc-xaman.png', fullPage: true })
+
+  // --- 6. Stellar pairing ---------------------------------------------------
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.waitForTimeout(2500)
+  await openWalletMenu()
+  await page.getByRole('button', { name: /^Connect$/ }).nth(2).click()
+  step('clicked Stellar connect')
+
+  const stellarQr = await page
+    .locator('img[alt="Scan with LOBSTR"]')
+    .first()
+    .waitFor({ timeout: 30000 })
+    .then(() => true)
+    .catch(() => false)
+  const stellarModal = await page.locator('text=Connect Stellar wallet').count()
+  result.stellar = { modal: stellarModal > 0, qr: stellarQr }
+  step(`stellar modal=${stellarModal > 0} qr=${stellarQr}`)
+  if (!stellarQr) result.errors.push('Stellar pairing produced no QR')
+
+  await page.screenshot({ path: 'wc-stellar.png', fullPage: true })
 } catch (e) {
   result.errors.push(e.message)
   await page.screenshot({ path: 'wc-error.png', fullPage: true }).catch(() => {})

@@ -241,6 +241,15 @@ export default function App() {
         onClose={wallet.closeJoeyModal}
       />
 
+      <JoeyConnectModal
+        uri={wallet.stellarUri}
+        connecting={wallet.stellarConnecting}
+        joeyHref=""
+        walletName="LOBSTR"
+        chainLabel="Stellar"
+        onClose={wallet.closeStellarModal}
+      />
+
       <XamanConnectModal
         open={wallet.xaman.modalOpen}
         payload={wallet.xaman.payload}

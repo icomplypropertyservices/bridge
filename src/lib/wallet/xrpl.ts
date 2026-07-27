@@ -20,6 +20,7 @@ import {
   addressFromCaip,
 } from './networks'
 import { appMetadata, projectId } from './appkit'
+import { focusPeerWallet } from './wcPeer'
 
 const STORAGE_PREFIX = 'riddle-xrpl'
 
@@ -208,13 +209,17 @@ export async function payXrpl(args: XrplPaymentArgs): Promise<XrplSubmitResult> 
   }
   if (tag != null) tx_json.DestinationTag = tag
 
-  const res = (await provider.request(
+  const pending = provider.request(
     {
       method: 'xrpl_signTransaction',
       params: { tx_json, autofill: true, submit: true },
     },
     XRPL_CAIP_NETWORK_ID,
-  )) as { tx_json?: Record<string, unknown> } | null
+  )
+  // Bring the wallet forward, or on mobile the prompt never becomes visible.
+  focusPeerWallet(provider.session)
+
+  const res = (await pending) as { tx_json?: Record<string, unknown> } | null
 
   const signed = res?.tx_json ?? null
   const hash = signed && typeof signed.hash === 'string' ? signed.hash : null

@@ -3,7 +3,7 @@ export const XUMM_API: string
 export function sanitizeError(msg: string): string
 export function rewriteLogoHosts(text: string): string
 export function buildConfigJson(env: Record<string, string | undefined>): {
-  feeAddresses: { xrpl: string; eip155: string; solana: string }
+  feeAddresses: { xrpl: string; eip155: string; solana: string; stellar: string }
   platformFeeBps: number
   platformFeePercent: string
   brand: string

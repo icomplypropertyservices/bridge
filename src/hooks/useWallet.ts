@@ -21,6 +21,12 @@ import {
   restoreXrplSession,
   xrplAccountFrom,
 } from '../lib/wallet/xrpl'
+import {
+  connectStellar,
+  disconnectStellar,
+  resetStellarStorage,
+  restoreStellarSession,
+} from '../lib/wallet/stellar'
 import { joeyDeepLink } from '../lib/wallet/joey'
 import { useXamanConnect } from './useXamanConnect'
 
@@ -28,15 +34,16 @@ export interface WalletAddresses {
   eip155: string
   solana: string
   xrpl: string
+  stellar: string
 }
 
 /** Menu-level wallet choice. Two of these share the `xrpl` family. */
-export type WalletKind = 'eip155' | 'solana' | 'joey' | 'xaman'
+export type WalletKind = 'eip155' | 'solana' | 'joey' | 'xaman' | 'stellar'
 
-export const WALLET_KINDS: WalletKind[] = ['eip155', 'solana', 'joey', 'xaman']
+export const WALLET_KINDS: WalletKind[] = ['eip155', 'solana', 'stellar', 'joey', 'xaman']
 
 export function kindFamily(kind: WalletKind): WalletFamily {
-  if (kind === 'eip155' || kind === 'solana') return kind
+  if (kind === 'eip155' || kind === 'solana' || kind === 'stellar') return kind
   return 'xrpl'
 }
 
@@ -49,6 +56,10 @@ export function useWallet() {
   const xaman = useXamanConnect()
 
   const [xrplAddress, setXrplAddress] = useState('')
+  const [stellarAddress, setStellarAddress] = useState('')
+  const [stellarConnecting, setStellarConnecting] = useState(false)
+  const [stellarUri, setStellarUri] = useState('')
+  const stellarPairingRef = useRef(false)
   const [xrplUri, setXrplUri] = useState('')
   const [joeyHref, setJoeyHref] = useState('')
   const [xrplConnecting, setXrplConnecting] = useState(false)
@@ -61,6 +72,9 @@ export function useWallet() {
     let cancelled = false
     void restoreXrplSession().then((addr) => {
       if (!cancelled && addr) setXrplAddress(addr)
+    })
+    void restoreStellarSession().then((addr) => {
+      if (!cancelled && addr) setStellarAddress(addr)
     })
     return () => {
       cancelled = true
@@ -100,8 +114,9 @@ export function useWallet() {
       eip155: evm.address || '',
       solana: sol.address || '',
       xrpl: xrplAddress || xaman.address,
+      stellar: stellarAddress,
     }),
-    [evm.address, sol.address, xrplAddress, xaman.address],
+    [evm.address, sol.address, xrplAddress, xaman.address, stellarAddress],
   )
 
   const kindAddresses = useMemo<Record<WalletKind, string>>(
@@ -110,8 +125,9 @@ export function useWallet() {
       solana: sol.address || '',
       joey: xrplAddress,
       xaman: xaman.address,
+      stellar: stellarAddress,
     }),
-    [evm.address, sol.address, xrplAddress, xaman.address],
+    [evm.address, sol.address, xrplAddress, xaman.address, stellarAddress],
   )
 
   /** True only when the XRPL address is backed by a signing session (Joey). */
@@ -123,7 +139,10 @@ export function useWallet() {
   )
 
   const connectedFamilies = useMemo(
-    () => (['eip155', 'solana', 'xrpl'] as WalletFamily[]).filter((f) => Boolean(addresses[f])),
+    () =>
+      (['eip155', 'solana', 'xrpl', 'stellar'] as WalletFamily[]).filter((f) =>
+        Boolean(addresses[f]),
+      ),
     [addresses],
   )
 
@@ -180,8 +199,40 @@ export function useWallet() {
     }
   }, [])
 
+  const connectStellarWallet = useCallback(async () => {
+    if (stellarPairingRef.current) return
+    stellarPairingRef.current = true
+    setStellarConnecting(true)
+    setStellarUri('')
+    try {
+      const addr = await connectStellar((uri) => setStellarUri(uri))
+      setStellarAddress(addr)
+      toast.success(`Stellar connected ${shortAddr(addr)}`)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Try again'
+      if (/reject|cancel|closed|denied/i.test(msg)) toast.info('Connection cancelled')
+      else {
+        resetStellarStorage()
+        toast.error('Stellar connect failed', { description: msg, duration: 10000 })
+      }
+    } finally {
+      stellarPairingRef.current = false
+      setStellarConnecting(false)
+      setStellarUri('')
+    }
+  }, [])
+
+  const closeStellarModal = useCallback(() => {
+    setStellarUri('')
+    setStellarConnecting(false)
+  }, [])
+
   const connectKind = useCallback(
     (kind: WalletKind) => {
+      if (kind === 'stellar') {
+        void connectStellarWallet()
+        return
+      }
       if (kind === 'joey') {
         void connectJoey()
         return
@@ -192,7 +243,7 @@ export function useWallet() {
       }
       void open({ view: 'Connect', namespace: kind })
     },
-    [connectJoey, open, xaman],
+    [connectJoey, connectStellarWallet, open, xaman],
   )
 
   /** Connect whichever wallet suits a bridge network; XRPL defaults to Joey. */
@@ -209,6 +260,12 @@ export function useWallet() {
   const disconnectKind = useCallback(
     async (kind: WalletKind) => {
       try {
+        if (kind === 'stellar') {
+          await disconnectStellar()
+          setStellarAddress('')
+          toast.info('Stellar wallet disconnected')
+          return
+        }
         if (kind === 'joey') {
           await disconnectXrpl()
           toast.info('Joey Wallet disconnected')
@@ -237,6 +294,7 @@ export function useWallet() {
     if (kindAddresses.eip155) tasks.push(disconnect({ namespace: 'eip155' }))
     if (kindAddresses.solana) tasks.push(disconnect({ namespace: 'solana' }))
     if (kindAddresses.joey) tasks.push(disconnectXrpl())
+    if (kindAddresses.stellar) tasks.push(disconnectStellar().then(() => setStellarAddress('')))
     if (kindAddresses.xaman) xaman.disconnect()
 
     const results = await Promise.allSettled(tasks)
@@ -276,6 +334,10 @@ export function useWallet() {
     xrplUri,
     joeyHref,
     closeJoeyModal,
+    // Stellar pairing modal
+    stellarConnecting,
+    stellarUri,
+    closeStellarModal,
     // Xaman Sign-In modal
     xaman,
   }

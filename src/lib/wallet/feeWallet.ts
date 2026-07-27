@@ -13,6 +13,7 @@ export interface FeeAddressMap {
   xrpl?: string
   eip155?: string
   solana?: string
+  stellar?: string
 }
 
 /**
@@ -35,6 +36,8 @@ export function looksLikeAddress(family: WalletFamily, address: string): boolean
       return false
     }
   }
+  // Stellar public keys are base32, always 56 chars, always G-prefixed.
+  if (family === 'stellar') return /^G[A-Z2-7]{55}$/.test(a)
   return /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(a)
 }
 

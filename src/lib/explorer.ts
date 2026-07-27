@@ -15,6 +15,7 @@ export function txExplorerUrl(network: string | undefined, txId: string): string
   const n = (network || '').toLowerCase()
   if (!txId) return null
   if (n === 'sol') return `https://solscan.io/tx/${txId}`
+  if (n === 'xlm') return `https://stellar.expert/explorer/public/tx/${txId}`
   if (n === 'xrp') return `https://livenet.xrpl.org/transactions/${txId}`
   const base = EVM_EXPLORERS[n]
   return base ? `${base}${txId}` : null

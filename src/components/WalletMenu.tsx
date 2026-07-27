@@ -6,6 +6,7 @@ import { WALLET_KINDS, type WalletApi, type WalletKind } from '../hooks/useWalle
 const KIND_LABEL: Record<WalletKind, string> = {
   eip155: 'Ethereum / EVM',
   solana: 'Solana',
+  stellar: 'Stellar',
   joey: 'Joey Wallet',
   xaman: 'Xaman',
 }
@@ -13,6 +14,7 @@ const KIND_LABEL: Record<WalletKind, string> = {
 const KIND_HINT: Record<WalletKind, string> = {
   eip155: 'MetaMask, Rainbow, Trust · WalletConnect',
   solana: 'Phantom, Solflare · WalletConnect',
+  stellar: 'LOBSTR · WalletConnect',
   joey: 'XRP Ledger · WalletConnect',
   xaman: 'XRP Ledger · Sign-In + deep link',
 }
@@ -74,6 +76,7 @@ export default function WalletMenu({ wallet, xamanAvailable }: Props) {
             const addr = kindAddresses[kind]
             const busy =
               (kind === 'joey' && wallet.xrplConnecting) ||
+              (kind === 'stellar' && wallet.stellarConnecting) ||
               (kind === 'xaman' && wallet.xaman.connecting)
             return (
               <div key={kind} className="flex items-center gap-2 rounded-xl p-2 hover:bg-white/5">

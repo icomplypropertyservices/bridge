@@ -23,7 +23,7 @@ import {
 import type { AppKitNetwork } from '@reown/appkit/networks'
 import type { CustomCaipNetwork } from '@reown/appkit-common'
 
-export type WalletFamily = 'eip155' | 'solana' | 'xrpl'
+export type WalletFamily = 'eip155' | 'solana' | 'xrpl' | 'stellar'
 
 /** Keys match the upstream network codes mapped in `networkLabel` (lib/format). */
 export const EVM_NETWORKS: Record<string, AppKitNetwork> = {
@@ -40,6 +40,7 @@ export const EVM_NETWORKS: Record<string, AppKitNetwork> = {
 
 export const SOLANA_NETWORK_CODES = new Set(['sol'])
 export const XRPL_NETWORK_CODES = new Set(['xrp'])
+export const STELLAR_NETWORK_CODES = new Set(['xlm'])
 
 export const XRPL_CAIP_NETWORK_ID = 'xrpl:0'
 export const XRPL_NAMESPACE = 'xrpl'
@@ -74,6 +75,7 @@ export function walletFamilyFor(network?: string | null): WalletFamily | null {
   const n = (network || '').toLowerCase()
   if (!n) return null
   if (XRPL_NETWORK_CODES.has(n)) return 'xrpl'
+  if (STELLAR_NETWORK_CODES.has(n)) return 'stellar'
   if (SOLANA_NETWORK_CODES.has(n)) return 'solana'
   if (EVM_NETWORKS[n]) return 'eip155'
   return null
@@ -92,6 +94,7 @@ export function isWalletSupported(network?: string | null): boolean {
 export function familyLabel(family: WalletFamily): string {
   if (family === 'eip155') return 'Ethereum / EVM'
   if (family === 'solana') return 'Solana'
+  if (family === 'stellar') return 'Stellar'
   return 'XRP Ledger'
 }
 

@@ -56,6 +56,8 @@ function resolveServerEnv(mode: string, cwd: string): Record<string, string> {
         'PLATFORM_FEE_ADDRESS_ETH',
         'PLATFORM_FEE_ADDRESS_SOL',
         'PLATFORM_FEE_ADDRESS_SOLANA',
+        'PLATFORM_FEE_ADDRESS_XLM',
+        'PLATFORM_FEE_ADDRESS_STELLAR',
       ].map((k) => [k, process.env[k] || fromVite[k] || fromFile[k] || '']),
     ),
   }

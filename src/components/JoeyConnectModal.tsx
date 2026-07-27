@@ -7,8 +7,11 @@ interface Props {
   /** WalletConnect pairing URI — empty until the provider emits it */
   uri: string
   connecting: boolean
-  /** Joey-specific deep link, resolved from the WalletConnect explorer */
+  /** Wallet-specific deep link, resolved from the WalletConnect explorer */
   joeyHref: string
+  /** Wallet shown in the copy; the QR itself works for any WC v2 wallet */
+  walletName?: string
+  chainLabel?: string
   onClose: () => void
 }
 
@@ -16,7 +19,14 @@ interface Props {
  * XRPL pairing UI. AppKit's modal only covers the namespaces its adapters
  * register, so the XRPL session gets its own QR + deep link surface.
  */
-export default function JoeyConnectModal({ uri, connecting, joeyHref, onClose }: Props) {
+export default function JoeyConnectModal({
+  uri,
+  connecting,
+  joeyHref,
+  walletName = 'Joey Wallet',
+  chainLabel = 'XRPL',
+  onClose,
+}: Props) {
   const [qr, setQr] = useState('')
   const [copied, setCopied] = useState(false)
 
@@ -56,9 +66,9 @@ export default function JoeyConnectModal({ uri, connecting, joeyHref, onClose }:
       <div className="glass-card w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-xl font-semibold">Connect XRPL wallet</h3>
+            <h3 className="text-xl font-semibold">Connect {chainLabel} wallet</h3>
             <p className="mt-1 text-sm text-riddle-muted">
-              Scan from <strong className="text-zinc-300">inside Joey Wallet</strong> — use its
+              Scan from <strong className="text-zinc-300">inside {walletName}</strong> — use its
               WalletConnect scanner, not your camera app
             </p>
           </div>
@@ -69,7 +79,7 @@ export default function JoeyConnectModal({ uri, connecting, joeyHref, onClose }:
 
         {qr ? (
           <div className="mx-auto mt-6 w-fit rounded-2xl border border-riddle-border bg-white p-3">
-            <img src={qr} alt="Scan with Joey Wallet" className="h-[280px] w-[280px]" />
+            <img src={qr} alt={`Scan with ${walletName}`} className="h-[280px] w-[280px]" />
           </div>
         ) : (
           <div className="mt-6 flex h-[280px] items-center justify-center">
@@ -92,7 +102,7 @@ export default function JoeyConnectModal({ uri, connecting, joeyHref, onClose }:
               className="btn-primary w-full justify-center text-center"
             >
               <ExternalLink className="h-4 w-4" />
-              Open in Joey Wallet
+              Open in {walletName}
             </a>
             <button type="button" className="btn-ghost w-full" onClick={() => void copy()}>
               {copied ? (
@@ -114,7 +124,7 @@ export default function JoeyConnectModal({ uri, connecting, joeyHref, onClose }:
         </div>
 
         <p className="mt-4 text-center text-[11px] text-zinc-600">
-          WalletConnect · xrpl:0 · any XRPL wallet that supports WalletConnect v2
+          WalletConnect v2 · any {chainLabel} wallet that supports it
         </p>
       </div>
     </div>

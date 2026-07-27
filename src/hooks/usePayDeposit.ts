@@ -15,6 +15,7 @@ import { evmChainIdFor, walletFamilyFor } from '../lib/wallet/networks'
 import { payEvm } from '../lib/pay/evm'
 import { paySolana } from '../lib/pay/solana'
 import { payXrpl } from '../lib/wallet/xrpl'
+import { payStellar } from '../lib/wallet/stellar'
 import type { BridgeCreateResult, BridgeCurrency } from '../types'
 import type { WalletAddresses } from './useWallet'
 
@@ -44,6 +45,7 @@ export function usePayDeposit(addresses: WalletAddresses, { xrplCanSign }: Optio
       const family = walletFamilyFor(from?.network)
       if (!family) return false
       if (family === 'solana') return Boolean(addresses.solana && solanaProvider)
+      if (family === 'stellar') return Boolean(addresses.stellar)
       if (family === 'xrpl') return Boolean(addresses.xrpl && xrplCanSign)
       return Boolean(addresses[family])
     },
@@ -89,6 +91,18 @@ export function usePayDeposit(addresses: WalletAddresses, { xrplCanSign }: Optio
           memo,
         })
         return { txId, network: from.network }
+      }
+
+      if (family === 'stellar') {
+        if (!addresses.stellar) throw new Error('Connect a Stellar wallet first')
+        const { hash } = await payStellar({
+          from: addresses.stellar,
+          destination: to,
+          amount,
+          memo,
+          tokenContract: from.tokenContract,
+        })
+        return { txId: hash, network: from.network }
       }
 
       if (!addresses.xrpl || !xrplCanSign) {
@@ -151,6 +165,18 @@ export function usePayDeposit(addresses: WalletAddresses, { xrplCanSign }: Optio
           memo: tag,
         })
         return { txId, network: from.network }
+      }
+
+      if (family === 'stellar') {
+        if (!addresses.stellar) throw new Error('Connect a Stellar wallet first')
+        const { hash } = await payStellar({
+          from: addresses.stellar,
+          destination: to,
+          amount,
+          memo: tag,
+          tokenContract: from.tokenContract,
+        })
+        return { txId: hash, network: from.network }
       }
 
       if (!addresses.xrpl || !xrplCanSign) {
