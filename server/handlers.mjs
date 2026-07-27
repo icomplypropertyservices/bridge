@@ -8,17 +8,50 @@
  * must be signed server-side with the API key + secret.
  */
 
-export const UPSTREAM = 'https://api.xrpl.to/v1'
+export const UPSTREAM = 'https://api.changenow.io/v2'
 export const XUMM_API = 'https://xumm.app/api/v1/platform/payload'
 
 export function sanitizeError(msg) {
   return String(msg)
+    .replace(/https?:\/\/api\.changenow\.io/gi, 'bridge-api')
     .replace(/https?:\/\/api\.xrpl\.to/gi, 'bridge-api')
+    .replace(/\bchangenow\.io\b/gi, 'bridge')
+    .replace(/\bchangenow\b/gi, 'bridge')
     .replace(/\bxrpl\.to\b/gi, 'bridge')
 }
 
+/** Logo URLs must survive the partner-name scrub above. */
 export function rewriteLogoHosts(text) {
   return String(text).replace(/content-api\.bridge\.io/g, 'content-api.changenow.io')
+}
+
+/**
+ * Client route → ChangeNOW v2 endpoint.
+ *
+ * The client speaks `/v1/bridge/<name>`; ChangeNOW groups the same operations
+ * under /v2/exchange with different names, so the mapping lives here rather
+ * than leaking the partner's URL shape into the app.
+ */
+const ROUTES = {
+  currencies: { path: '/exchange/currencies', defaults: { active: 'true', flow: 'standard' } },
+  estimate: { path: '/exchange/estimated-amount', defaults: { flow: 'standard' } },
+  'min-amount': { path: '/exchange/min-amount', defaults: { flow: 'standard' } },
+  create: { path: '/exchange', defaults: {} },
+  status: { path: '/exchange/by-id', defaults: {} },
+  'validate-address': { path: '/validate/address', defaults: {} },
+}
+
+/** Fill in fields ChangeNOW requires in the request body but the client omits. */
+function withBodyDefaults(name, body) {
+  if (name !== 'create') return body
+  try {
+    const parsed = JSON.parse(body || '{}')
+    if (!parsed.flow) parsed.flow = 'standard'
+    if (!parsed.type) parsed.type = 'direct'
+    return JSON.stringify(parsed)
+  } catch {
+    return body
+  }
 }
 
 /**
@@ -44,7 +77,7 @@ function buildFeeAddresses(env) {
 
 export function buildConfigJson(env) {
   const feeBps = Number(env.PLATFORM_FEE_BPS || '85')
-  const apiKey = String(env.XRPL_TO_API_KEY || '').trim()
+  const apiKey = String(env.CHANGENOW_API_KEY || env.XRPL_TO_API_KEY || '').trim()
   const xummKey = String(env.XUMM_API_KEY || '').trim()
   const xummSecret = String(env.XUMM_API_SECRET || '').trim()
   const bps = Number.isFinite(feeBps) ? feeBps : 85
@@ -68,28 +101,40 @@ export function buildConfigJson(env) {
  * @returns {Promise<{ status: number, body: string, contentType: string, cacheControl?: string }>}
  */
 export async function proxyBridge(req, env) {
-  const apiKey = String(env.XRPL_TO_API_KEY || '').trim()
+  // CHANGENOW_API_KEY is the real name; XRPL_TO_API_KEY is honoured so an
+  // existing deploy keeps working through the rename.
+  const apiKey = String(env.CHANGENOW_API_KEY || env.XRPL_TO_API_KEY || '').trim()
 
-  // path like /bridge/currencies or currencies (normalized to /bridge/...)
-  let sub = req.path.replace(/^\/v1/, '').replace(/^\//, '')
-  if (!sub.startsWith('bridge/')) sub = `bridge/${sub}`
-  const q = req.query?.toString?.() || ''
-  const target = `${UPSTREAM}/${sub}${q ? `?${q}` : ''}`
+  // path like /bridge/currencies or currencies → the operation name
+  const name = req.path.replace(/^\/v1/, '').replace(/^\//, '').replace(/^bridge\//, '')
+  const route = ROUTES[name]
+  if (!route) {
+    return {
+      status: 404,
+      body: JSON.stringify({ error: `Unknown bridge route: ${name}` }),
+      contentType: 'application/json',
+    }
+  }
+
+  const params = new URLSearchParams(req.query?.toString?.() || '')
+  for (const [k, v] of Object.entries(route.defaults)) {
+    if (!params.has(k)) params.set(k, v)
+  }
+  const q = params.toString()
+  const target = `${UPSTREAM}${route.path}${q ? `?${q}` : ''}`
 
   const headers = {
     Accept: 'application/json',
     'User-Agent': 'RiddleBridge/1.0',
   }
-  // Upstream serves these routes unauthenticated at a low rate limit, so a
-  // missing key degrades rather than blocks. Sending an *invalid* key is worse
-  // than sending none — it turns a working 200 into a 401 — so only attach it
-  // when one is actually configured.
-  if (apiKey) headers['X-Api-Key'] = apiKey
+  if (apiKey) headers['x-changenow-api-key'] = apiKey
 
   const init = { method: req.method || 'GET', headers }
   if (req.body && (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH')) {
     headers['Content-Type'] = 'application/json'
-    init.body = req.body
+    // `flow`/`type` live in the body for create, not the query string, so the
+    // route defaults above cannot supply them.
+    init.body = withBodyDefaults(name, req.body)
   }
 
   try {
@@ -97,18 +142,18 @@ export async function proxyBridge(req, env) {
     let text = await upstream.text()
     if (upstream.ok) {
       text = rewriteLogoHosts(text)
-    } else if (upstream.status === 401 && apiKey) {
+    } else if ((upstream.status === 401 || upstream.status === 403) && apiKey) {
       // A configured-but-rejected key is a deploy problem, not a user error —
       // say so plainly instead of leaking the upstream's wording.
       text = JSON.stringify({
-        error: 'Bridge API key was rejected by the upstream — check XRPL_TO_API_KEY',
+        error: 'Bridge API key was rejected by the upstream — check CHANGENOW_API_KEY',
       })
     } else {
       text = sanitizeError(text)
     }
 
     const cacheControl =
-      sub === 'bridge/currencies' && req.method === 'GET'
+      name === 'currencies' && req.method === 'GET'
         ? 'public, s-maxage=300, stale-while-revalidate=600'
         : 'no-store'
 

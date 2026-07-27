@@ -43,6 +43,11 @@ function resolveServerEnv(mode: string, cwd: string): Record<string, string> {
   return {
     XRPL_TO_API_KEY:
       process.env.XRPL_TO_API_KEY || fromVite.XRPL_TO_API_KEY || fromFile.XRPL_TO_API_KEY || '',
+    CHANGENOW_API_KEY:
+      process.env.CHANGENOW_API_KEY ||
+      fromVite.CHANGENOW_API_KEY ||
+      fromFile.CHANGENOW_API_KEY ||
+      '',
     PLATFORM_FEE_BPS:
       process.env.PLATFORM_FEE_BPS || fromVite.PLATFORM_FEE_BPS || fromFile.PLATFORM_FEE_BPS || '85',
     XUMM_API_KEY: process.env.XUMM_API_KEY || fromVite.XUMM_API_KEY || fromFile.XUMM_API_KEY || '',
